@@ -55,6 +55,7 @@ function bindUI() {
   handleTxTypeChange();
 
   $("#providerList").addEventListener("click", async (event) => {
+    if (!(event.target instanceof Element)) return;
     const btn = event.target.closest("button[data-action]");
     if (!btn) return;
     const id = Number(btn.dataset.id);
@@ -107,7 +108,13 @@ async function api(path, init = {}) {
   const res = await fetch(path, { ...init, headers });
   if (!res.ok) {
     const payload = await safeJson(res);
-    throw new Error(payload?.error || `${res.status} ${res.statusText}`);
+    const detail =
+      typeof payload?.error === "string"
+        ? payload.error
+        : payload?.error
+          ? JSON.stringify(payload.error)
+          : `${res.status} ${res.statusText}`;
+    throw new Error(detail);
   }
   return safeJson(res);
 }
@@ -157,36 +164,40 @@ async function loadAll() {
 }
 
 async function loadSettings() {
-  state.settings = await api("/api/v1/settings");
+  state.settings = (await api("/api/v1/settings")) || {
+    base_currency: "USD",
+    timezone: "UTC",
+    default_ai_provider_id: null
+  };
   $("#settingsForm [name=base_currency]").value = state.settings.base_currency || "USD";
   $("#settingsForm [name=timezone]").value = state.settings.timezone || "UTC";
 }
 
 async function loadCategories() {
-  state.categories = await api("/api/v1/categories");
+  state.categories = (await api("/api/v1/categories")) || {};
   renderCategoryTree();
   populateL1Selects();
 }
 
 async function loadAccounts() {
-  state.accounts = await api("/api/v1/accounts");
+  state.accounts = (await api("/api/v1/accounts")) || [];
   renderAccounts();
   populateAccountSelects();
 }
 
 async function loadProviders() {
-  state.providers = await api("/api/v1/ai/providers");
+  state.providers = (await api("/api/v1/ai/providers")) || [];
   renderProviders();
 }
 
 async function loadFunds() {
-  state.funds = await api("/api/v1/funds");
+  state.funds = (await api("/api/v1/funds")) || [];
   renderFunds();
   populateFundSelect();
 }
 
 function populateL1Selects() {
-  const activeL1 = Object.entries(state.categories)
+  const activeL1 = Object.entries(state.categories || {})
     .filter(([, cfg]) => cfg.active)
     .map(([name]) => name);
   const selects = [
@@ -208,7 +219,7 @@ function populateL2Select() {
   const l1 = $("#transactionForm [name=category_l1]").value;
   const target = $("#transactionForm [name=category_l2]");
   target.innerHTML = "";
-  const rows = state.categories[l1]?.l2 || [];
+  const rows = state.categories?.[l1]?.l2 || [];
   for (const row of rows) {
     if (!row.active) continue;
     target.appendChild(new Option(row.name, row.name));
@@ -220,7 +231,7 @@ function populateAccountSelects() {
   const to = $("#transactionForm [name=account_to_id]");
   for (const select of [from, to]) {
     select.innerHTML = '<option value="">-- none --</option>';
-    for (const account of state.accounts) {
+    for (const account of state.accounts || []) {
       const label = `${account.name} · ${account.type} · ${formatMoney(account.balance)} ${account.currency}`;
       select.appendChild(new Option(label, String(account.id)));
     }
@@ -230,7 +241,7 @@ function populateAccountSelects() {
 function populateFundSelect() {
   const select = $("#fundAllocateForm [name=fund_id]");
   select.innerHTML = "";
-  for (const fund of state.funds) {
+  for (const fund of state.funds || []) {
     select.appendChild(new Option(`${fund.name} (${formatMoney(fund.balance)})`, String(fund.id)));
   }
 }
@@ -552,14 +563,15 @@ async function generateMonthlyReview() {
 
 async function loadDashboard() {
   const dashboard = await api(`/api/v1/dashboard?month=${state.month}`);
+  const baseCurrency = dashboard.base_currency || state.settings?.base_currency || "USD";
   const pairs = [
-    ["Net Worth", dashboard.net_worth],
-    ["Liquid Cash", dashboard.liquid_cash],
-    ["Restricted Cash", dashboard.restricted_cash_total],
-    ["Monthly Income", dashboard.monthly_income],
-    ["Monthly Expense", dashboard.monthly_expense],
-    ["Net Cash Flow", dashboard.net_cash_flow],
-    ["Burn Rate", dashboard.burn_rate],
+    [`Net Worth (${baseCurrency})`, dashboard.net_worth],
+    [`Liquid Cash (${baseCurrency})`, dashboard.liquid_cash],
+    [`Restricted Cash (${baseCurrency})`, dashboard.restricted_cash_total],
+    [`Monthly Income (${baseCurrency})`, dashboard.monthly_income],
+    [`Monthly Expense (${baseCurrency})`, dashboard.monthly_expense],
+    [`Net Cash Flow (${baseCurrency})`, dashboard.net_cash_flow],
+    [`Burn Rate (${baseCurrency})`, dashboard.burn_rate],
     ["Runway (months)", dashboard.runway_months ?? "Infinity"]
   ];
   $("#metricsGrid").innerHTML = pairs
@@ -575,7 +587,11 @@ async function loadDashboard() {
 }
 
 async function loadRisk() {
-  const risk = await api(`/api/v1/metrics/risk?month=${state.month}`);
+  const risk = (await api(`/api/v1/metrics/risk?month=${state.month}`)) || {
+    crypto_exposure: 0,
+    income_volatility: 0,
+    fixed_cost_ratio: 0
+  };
   $("#riskMetrics").innerHTML = `
     <article class="list-row"><div class="row-main"><strong>Crypto Exposure</strong><span>${
       (risk.crypto_exposure * 100).toFixed(2)
@@ -634,11 +650,12 @@ function renderAccounts() {
 
 function renderProviders() {
   const target = $("#providerList");
-  if (!state.providers.length) {
+  const providers = Array.isArray(state.providers) ? state.providers.filter(Boolean) : [];
+  if (!providers.length) {
     target.innerHTML = '<div class="list-row muted">No provider configured. Parser will use fallback.</div>';
     return;
   }
-  target.innerHTML = state.providers
+  target.innerHTML = providers
     .map(
       (row) => `
       <article class="list-row">
@@ -662,7 +679,7 @@ function renderProviders() {
 
 function renderFunds() {
   const target = $("#fundList");
-  if (!state.funds.length) {
+  if (!Array.isArray(state.funds) || !state.funds.length) {
     target.innerHTML = '<div class="list-row muted">No funds configured.</div>';
     return;
   }
@@ -702,9 +719,14 @@ async function loadTransactions() {
       return `
         <article class="list-row">
           <div class="row-main">
-            <strong>${row.type.toUpperCase()} · ${formatMoney(row.amount_base)}</strong>
+            <strong>${row.type.toUpperCase()} · ${formatMoney(row.amount_base)} ${
+        state.settings?.base_currency || "USD"
+      }</strong>
             <span class="muted">${row.tx_date}</span>
           </div>
+          <div class="muted">original: ${formatMoney(row.amount_original)} ${escapeHtml(
+        row.currency_original
+      )}</div>
           <div class="muted">${row.category_l1 || "-"} / ${row.category_l2 || "-"} · reason: ${
         row.transfer_reason || "-"
       }</div>
@@ -790,7 +812,7 @@ async function loadReview() {
 }
 
 function renderCategoryTree() {
-  const rows = Object.entries(state.categories);
+  const rows = Object.entries(state.categories || {}).filter(([, cfg]) => Boolean(cfg));
   const target = $("#categoryTree");
   if (!rows.length) {
     target.innerHTML = '<div class="list-row muted">No categories.</div>';
@@ -798,7 +820,7 @@ function renderCategoryTree() {
   }
   target.innerHTML = rows
     .map(([name, cfg]) => {
-      const l2 = cfg.l2
+      const l2 = (cfg.l2 || [])
         .map((item) => `<span class="pill">${escapeHtml(item.name)}</span>`)
         .join("");
       return `

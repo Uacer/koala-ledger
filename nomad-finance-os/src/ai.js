@@ -49,9 +49,16 @@ async function parseWithProvider(provider, { text, imageBase64 }, { categories, 
   };
   const prompt = [
     "You are a finance parser. Return JSON only, no markdown.",
+    "Normalize currency aliases (e.g. baht/泰铢/บาท => THB, 人民币/元 => CNY).",
+    "For daily Chinese phrasing, infer intent from verbs like 花了/买了/收到/转账.",
+    "If user text mentions travel/tourism spend (旅游/旅行/trip), prefer Lifestyle/Entertainment unless explicit transport or hotel terms exist.",
     `Allowed categories: ${JSON.stringify(mapCategoriesForPrompt(categories))}`,
     `Known accounts: ${JSON.stringify(accounts.map((a) => ({ id: a.id, name: a.name, type: a.type })))}`,
     `Output schema example: ${JSON.stringify(schemaHint)}`,
+    "Few-shot examples:",
+    'Input: "旅游花了10000泰铢" -> {"type":"expense","amount_original":10000,"currency_original":"THB"}',
+    'Input: "收到项目款 800 USDT" -> {"type":"income","amount_original":800,"currency_original":"USDT"}',
+    'Input: "Wise -> Thai Bank 500 USD" -> {"type":"transfer","amount_original":500,"currency_original":"USD"}',
     `Text: ${text || "(empty)"}`
   ].join("\n");
 

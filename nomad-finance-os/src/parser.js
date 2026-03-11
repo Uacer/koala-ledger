@@ -3,24 +3,27 @@ const { normalizeCurrency } = require("./fx");
 const INCOME_HINTS = ["收到", "收款", "received", "income", "project payment", "salary"];
 
 function parseAmountAndCurrency(text) {
-  const patterns = [
-    /([0-9]+(?:\.[0-9]+)?)\s*(USDT|USD|THB|RMB|CNY|SGD|EUR|GBP|JPY)/i,
+  const normalizedText = String(text || "")
+    .replace(/泰铢|บาท|baht/gi, " THB ")
+    .replace(/人民币|人民幣|rmb/gi, " CNY ")
+    .replace(/美金|美元/gi, " USD ");
+  const amountThenCurrency = normalizedText.match(
+    /([0-9]+(?:\.[0-9]+)?)\s*(USDT|USD|THB|RMB|CNY|SGD|EUR|GBP|JPY)/i
+  );
+  if (amountThenCurrency) {
+    return {
+      amount_original: Number(amountThenCurrency[1]),
+      currency_original: normalizeCurrency(amountThenCurrency[2])
+    };
+  }
+  const currencyThenAmount = normalizedText.match(
     /(USDT|USD|THB|RMB|CNY|SGD|EUR|GBP|JPY)\s*([0-9]+(?:\.[0-9]+)?)/i
-  ];
-  for (const pattern of patterns) {
-    const match = text.match(pattern);
-    if (match) {
-      if (pattern === patterns[0]) {
-        return {
-          amount_original: Number(match[1]),
-          currency_original: normalizeCurrency(match[2])
-        };
-      }
-      return {
-        amount_original: Number(match[2]),
-        currency_original: normalizeCurrency(match[1])
-      };
-    }
+  );
+  if (currencyThenAmount) {
+    return {
+      amount_original: Number(currencyThenAmount[2]),
+      currency_original: normalizeCurrency(currencyThenAmount[1])
+    };
   }
   return { amount_original: 0, currency_original: "USD" };
 }
@@ -46,6 +49,7 @@ function detectCategory(text, categories) {
     { l1: "Travel", l2: "Visa", keywords: ["visa", "签证"] },
     { l1: "Work", l2: "SaaS", keywords: ["subscription", "saas"] },
     { l1: "Lifestyle", l2: "Dining", keywords: ["coffee", "restaurant", "餐"] },
+    { l1: "Lifestyle", l2: "Entertainment", keywords: ["travel", "trip", "旅游", "旅行", "vacation"] },
     { l1: "Study", l2: "Courses", keywords: ["course", "课程", "book", "书"] }
   ];
   for (const item of dictionary) {

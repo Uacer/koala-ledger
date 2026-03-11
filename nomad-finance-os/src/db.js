@@ -8,7 +8,20 @@ function createDb(filename = ":memory:") {
   db.pragma("foreign_keys = ON");
   const schemaPath = path.join(__dirname, "schema.sql");
   db.exec(fs.readFileSync(schemaPath, "utf8"));
+  runMigrations(db);
   return db;
+}
+
+function runMigrations(db) {
+  ensureColumn(db, "accounts", "opening_balance", "NUMERIC NOT NULL DEFAULT 0");
+}
+
+function ensureColumn(db, table, column, ddl) {
+  const rows = db.prepare(`PRAGMA table_info(${table})`).all();
+  const exists = rows.some((row) => row.name === column);
+  if (!exists) {
+    db.exec(`ALTER TABLE ${table} ADD COLUMN ${column} ${ddl}`);
+  }
 }
 
 function ensureUserAndSeedDefaults(db, userId) {

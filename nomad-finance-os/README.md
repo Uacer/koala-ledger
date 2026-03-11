@@ -13,6 +13,8 @@ Web-first MVP backend implementing:
 - BYOK AI providers (OpenAI-compatible endpoint) + parse text/image draft + confirm extraction
 - FX quote endpoint and auto conversion to base currency
 - Product event tracking + analytics summary endpoint
+- Account balances tracked in each account's own currency, while dashboard metrics are unified into base currency
+- Dashboard/Review/Budget spent calculations are dynamically recomputed in current base currency from original transaction currency
 
 ## Quick Start
 
@@ -125,6 +127,7 @@ Sample cron entries are provided at `ops/cron/backup.cron`:
 - `POST /api/v1/categories/l2`
 - `POST /api/v1/accounts`
 - `GET /api/v1/accounts`
+- `POST /api/v1/admin/rebuild-balances`
 - `GET /api/v1/tags`
 - `POST /api/v1/ai/providers`
 - `GET /api/v1/ai/providers`

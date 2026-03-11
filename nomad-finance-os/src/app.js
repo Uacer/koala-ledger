@@ -10,7 +10,7 @@ const {
   TRANSACTION_TYPES
 } = require("./constants");
 const { ensureUserAndSeedDefaults, normalizeMonth } = require("./db");
-const { fetchFxRate, normalizeCurrency } = require("./fx");
+const { fallbackFxRate, fetchFxRate, normalizeCurrency } = require("./fx");
 const { encryptText } = require("./security");
 const { buildExtractionDraft } = require("./ai");
 
@@ -162,8 +162,8 @@ function createApp(db) {
     const result = db
       .prepare(
         `
-          INSERT INTO accounts (user_id, name, type, currency, balance)
-          VALUES (?, ?, ?, ?, ?)
+          INSERT INTO accounts (user_id, name, type, currency, opening_balance, balance)
+          VALUES (?, ?, ?, ?, ?, ?)
         `
       )
       .run(
@@ -171,6 +171,7 @@ function createApp(db) {
         payload.name.trim(),
         payload.type,
         normalizeCurrency(payload.currency),
+        payload.balance,
         payload.balance
       );
     const account = db
@@ -184,6 +185,11 @@ function createApp(db) {
       .prepare("SELECT * FROM accounts WHERE user_id = ? ORDER BY id")
       .all(req.userId);
     res.json(rows);
+  });
+
+  app.post("/api/v1/admin/rebuild-balances", (req, res) => {
+    const result = rebuildUserBalances(db, req.userId);
+    res.status(201).json(result);
   });
 
   app.get("/api/v1/tags", (req, res) => {
@@ -251,7 +257,18 @@ function createApp(db) {
     logEvent(db, req.userId, "ai_provider_created", {
       provider_type: payload.provider_type
     });
-    res.status(201).json(getProviderPublicView(db, req.userId, providerId));
+    const created = getProviderPublicView(db, req.userId, providerId);
+    res.status(201).json(
+      created || {
+        id: providerId,
+        provider_type: payload.provider_type,
+        display_name: payload.display_name,
+        base_url: payload.base_url,
+        model: payload.model,
+        key_masked: `****${last4}`,
+        is_default: !settings.default_ai_provider_id
+      }
+    );
   });
 
   app.get("/api/v1/ai/providers", (req, res) => {
@@ -537,6 +554,7 @@ function createApp(db) {
 
   app.get("/api/v1/transactions", (req, res) => {
     const month = normalizeMonth(req.query.month);
+    const baseCurrency = getUserSettings(db, req.userId).base_currency;
     const params = [req.userId, month];
     const filters = ["t.user_id = ?", "substr(t.tx_date, 1, 7) = ?"];
     if (req.query.type) {
@@ -571,7 +589,13 @@ function createApp(db) {
     `;
     const rows = db.prepare(sql).all(...params).map((row) => ({
       ...row,
-      amount_base: Number(row.amount_base),
+      amount_base_snapshot: Number(row.amount_base),
+      amount_base: convertCurrency(
+        Number(row.amount_original || 0),
+        normalizeCurrency(row.currency_original || baseCurrency),
+        baseCurrency
+      ),
+      base_currency: baseCurrency,
       tags: row.tag_names ? row.tag_names.split("|") : []
     }));
     res.json(rows);
@@ -608,28 +632,41 @@ function createApp(db) {
 
   app.get("/api/v1/budgets", (req, res) => {
     const month = normalizeMonth(req.query.month);
+    const baseCurrency = getUserSettings(db, req.userId).base_currency;
+    const expenses = db
+      .prepare(
+        `
+          SELECT category_l1, amount_original, currency_original
+          FROM transactions
+          WHERE user_id = ? AND type = 'expense' AND substr(tx_date, 1, 7) = ?
+        `
+      )
+      .all(req.userId, month);
+    const spentByCategory = new Map();
+    for (const tx of expenses) {
+      const spent = convertCurrency(
+        Number(tx.amount_original || 0),
+        normalizeCurrency(tx.currency_original || baseCurrency),
+        baseCurrency
+      );
+      spentByCategory.set(tx.category_l1, (spentByCategory.get(tx.category_l1) || 0) + spent);
+    }
     const rows = db
       .prepare(
         `
-          SELECT
-            b.month,
-            b.category_l1,
-            b.total_amount,
-            COALESCE(SUM(t.amount_base), 0) AS spent_amount
+          SELECT b.month, b.category_l1, b.total_amount
           FROM budgets b
-          LEFT JOIN transactions t
-            ON t.user_id = b.user_id
-           AND t.type = 'expense'
-           AND t.category_l1 = b.category_l1
-           AND substr(t.tx_date, 1, 7) = b.month
-          WHERE b.user_id = ?
-            AND b.month = ?
-          GROUP BY b.id
+          WHERE b.user_id = ? AND b.month = ?
           ORDER BY b.category_l1
         `
       )
       .all(req.userId, month)
-      .map(enrichBudgetRow);
+      .map((row) =>
+        enrichBudgetRow({
+          ...row,
+          spent_amount: Number(spentByCategory.get(row.category_l1) || 0)
+        })
+      );
     res.json(rows);
   });
 
@@ -665,30 +702,41 @@ function createApp(db) {
   app.get("/api/v1/budgets/yearly", (req, res) => {
     const year =
       Number.parseInt(req.query.year, 10) || Number.parseInt(new Date().toISOString().slice(0, 4), 10);
+    const baseCurrency = getUserSettings(db, req.userId).base_currency;
+    const expenses = db
+      .prepare(
+        `
+          SELECT category_l1, amount_original, currency_original
+          FROM transactions
+          WHERE user_id = ? AND type = 'expense' AND substr(tx_date, 1, 4) = ?
+        `
+      )
+      .all(req.userId, String(year));
+    const spentByCategory = new Map();
+    for (const tx of expenses) {
+      const spent = convertCurrency(
+        Number(tx.amount_original || 0),
+        normalizeCurrency(tx.currency_original || baseCurrency),
+        baseCurrency
+      );
+      spentByCategory.set(tx.category_l1, (spentByCategory.get(tx.category_l1) || 0) + spent);
+    }
     const rows = db
       .prepare(
         `
-          SELECT
-            y.year,
-            y.category_l1,
-            y.total_amount,
-            COALESCE(SUM(t.amount_base), 0) AS spent_amount
+          SELECT y.year, y.category_l1, y.total_amount
           FROM yearly_budgets y
-          LEFT JOIN transactions t
-            ON t.user_id = y.user_id
-           AND t.type = 'expense'
-           AND t.category_l1 = y.category_l1
-           AND substr(t.tx_date, 1, 4) = CAST(y.year AS TEXT)
-          WHERE y.user_id = ?
-            AND y.year = ?
-          GROUP BY y.id
+          WHERE y.user_id = ? AND y.year = ?
           ORDER BY y.category_l1
         `
       )
       .all(req.userId, year)
       .map((row) => ({
         year: row.year,
-        ...enrichBudgetRow(row)
+        ...enrichBudgetRow({
+          ...row,
+          spent_amount: Number(spentByCategory.get(row.category_l1) || 0)
+        })
       }));
     res.json(rows);
   });
@@ -813,6 +861,7 @@ function createApp(db) {
 
   app.get("/api/v1/reviews/monthly", (req, res) => {
     const month = normalizeMonth(req.query.month);
+    const currentBase = getUserSettings(db, req.userId).base_currency;
     logEvent(db, req.userId, "monthly_review_opened", { month });
     const snapshot = db
       .prepare(
@@ -821,9 +870,16 @@ function createApp(db) {
       .get(req.userId, month);
     if (snapshot) {
       const payload = JSON.parse(snapshot.payload_json);
-      return res.json({ ...payload, summary: snapshot.summary, source: "snapshot", created_at: snapshot.created_at });
+      if (payload.base_currency === currentBase) {
+        return res.json({
+          ...payload,
+          summary: snapshot.summary,
+          source: "snapshot",
+          created_at: snapshot.created_at
+        });
+      }
     }
-    const payload = buildMonthlyReviewPayload(db, req.userId, month);
+    const payload = buildMonthlyReviewPayload(db, req.userId, month, currentBase);
     return res.json({ ...payload, source: "live" });
   });
 
@@ -834,7 +890,12 @@ function createApp(db) {
       return res.status(400).json({ error: parsed.error.flatten() });
     }
     const month = normalizeMonth(parsed.data.month);
-    const payload = buildMonthlyReviewPayload(db, req.userId, month);
+    const payload = buildMonthlyReviewPayload(
+      db,
+      req.userId,
+      month,
+      getUserSettings(db, req.userId).base_currency
+    );
     db.prepare(
       `
         INSERT INTO monthly_review_snapshots (user_id, month, payload_json, summary)
@@ -1195,12 +1256,32 @@ function createTransactionRecord(db, userId, payload) {
     );
     const txId = Number(result.lastInsertRowid);
     if (type === "expense") {
-      updateBalance.run(-amountBase, from.id, userId);
+      const deltaFrom = convertCurrency(
+        amountOriginal,
+        normalizeCurrency(payload.currency_original),
+        normalizeCurrency(from.currency)
+      );
+      updateBalance.run(-deltaFrom, from.id, userId);
     } else if (type === "income") {
-      updateBalance.run(amountBase, to.id, userId);
+      const deltaTo = convertCurrency(
+        amountOriginal,
+        normalizeCurrency(payload.currency_original),
+        normalizeCurrency(to.currency)
+      );
+      updateBalance.run(deltaTo, to.id, userId);
     } else if (type === "transfer") {
-      updateBalance.run(-amountBase, from.id, userId);
-      updateBalance.run(amountBase, to.id, userId);
+      const deltaFrom = convertCurrency(
+        amountOriginal,
+        normalizeCurrency(payload.currency_original),
+        normalizeCurrency(from.currency)
+      );
+      const deltaTo = convertCurrency(
+        amountOriginal,
+        normalizeCurrency(payload.currency_original),
+        normalizeCurrency(to.currency)
+      );
+      updateBalance.run(-deltaFrom, from.id, userId);
+      updateBalance.run(deltaTo, to.id, userId);
     }
     for (const tag of tags) {
       insertTag.run(userId, tag);
@@ -1248,72 +1329,74 @@ function logEvent(db, userId, eventName, payload = {}) {
 }
 
 function buildDashboardPayload(db, userId, month, baseCurrency) {
-  const netWorth =
-    Number(
-      db
-        .prepare("SELECT COALESCE(SUM(balance), 0) AS value FROM accounts WHERE user_id = ?")
-        .get(userId).value
-    ) || 0;
-  const liquidCash =
-    Number(
-      db
-        .prepare(
-          "SELECT COALESCE(SUM(balance), 0) AS value FROM accounts WHERE user_id = ? AND type != 'restricted_cash'"
-        )
-        .get(userId).value
-    ) || 0;
-  const restrictedCashTotal =
-    Number(
-      db
-        .prepare(
-          "SELECT COALESCE(SUM(balance), 0) AS value FROM accounts WHERE user_id = ? AND type = 'restricted_cash'"
-        )
-        .get(userId).value
-    ) || 0;
-  const monthly = db
+  const accountRows = db
+    .prepare("SELECT balance, currency, type FROM accounts WHERE user_id = ?")
+    .all(userId);
+  let netWorth = 0;
+  let liquidCash = 0;
+  let restrictedCashTotal = 0;
+  for (const account of accountRows) {
+    const valueBase = convertCurrency(
+      Number(account.balance),
+      normalizeCurrency(account.currency),
+      baseCurrency
+    );
+    netWorth += valueBase;
+    if (account.type === "restricted_cash") {
+      restrictedCashTotal += valueBase;
+    } else {
+      liquidCash += valueBase;
+    }
+  }
+  const monthRows = db
     .prepare(
       `
-        SELECT
-          COALESCE(SUM(CASE WHEN type = 'income' THEN amount_base END), 0) AS monthly_income,
-          COALESCE(SUM(CASE WHEN type = 'expense' THEN amount_base END), 0) AS monthly_expense
+        SELECT type, amount_original, currency_original, category_l1
         FROM transactions
-        WHERE user_id = ?
-          AND substr(tx_date, 1, 7) = ?
+        WHERE user_id = ? AND substr(tx_date, 1, 7) = ?
       `
     )
-    .get(userId, month);
-  const monthlyIncome = Number(monthly.monthly_income) || 0;
-  const monthlyExpense = Number(monthly.monthly_expense) || 0;
+    .all(userId, month);
+  let monthlyIncome = 0;
+  let monthlyExpense = 0;
+  const spentByCategory = new Map();
+  for (const tx of monthRows) {
+    const converted = convertCurrency(
+      Number(tx.amount_original || 0),
+      normalizeCurrency(tx.currency_original || baseCurrency),
+      baseCurrency
+    );
+    if (tx.type === "income") {
+      monthlyIncome += converted;
+    } else if (tx.type === "expense") {
+      monthlyExpense += converted;
+      spentByCategory.set(tx.category_l1, (spentByCategory.get(tx.category_l1) || 0) + converted);
+    }
+  }
 
-  const budgetStatus = db
+  const budgetRows = db
     .prepare(
       `
-        SELECT
-          b.category_l1,
-          b.total_amount,
-          COALESCE(SUM(t.amount_base), 0) AS spent_amount
-        FROM budgets b
-        LEFT JOIN transactions t
-          ON t.user_id = b.user_id
-         AND t.type = 'expense'
-         AND t.category_l1 = b.category_l1
-         AND substr(t.tx_date, 1, 7) = b.month
-        WHERE b.user_id = ?
-          AND b.month = ?
-        GROUP BY b.id
-        ORDER BY b.category_l1
+        SELECT category_l1, total_amount
+        FROM budgets
+        WHERE user_id = ? AND month = ?
+        ORDER BY category_l1
       `
     )
-    .all(userId, month)
-    .map((row) => ({
+    .all(userId, month);
+  const budgetStatus = budgetRows.map((row) => {
+    const spent = Number(spentByCategory.get(row.category_l1) || 0);
+    const total = Number(row.total_amount);
+    return {
       category_l1: row.category_l1,
-      total_amount: Number(row.total_amount),
-      spent_amount: Number(row.spent_amount),
-      remaining_amount: Number(row.total_amount) - Number(row.spent_amount),
-      overspend: Number(row.spent_amount) > Number(row.total_amount)
-    }));
+      total_amount: total,
+      spent_amount: spent,
+      remaining_amount: total - spent,
+      overspend: spent > total
+    };
+  });
 
-  const burnRate = computeBurnRate(db, userId);
+  const burnRate = computeBurnRate(db, userId, baseCurrency);
   const runway = burnRate > 0 ? Number((liquidCash / burnRate).toFixed(2)) : null;
 
   return {
@@ -1331,56 +1414,82 @@ function buildDashboardPayload(db, userId, month, baseCurrency) {
   };
 }
 
-function computeBurnRate(db, userId) {
+function computeBurnRate(db, userId, baseCurrency) {
   const rows = db
     .prepare(
       `
-        SELECT
-          substr(tx_date, 1, 7) AS month,
-          COALESCE(SUM(CASE WHEN type = 'income' THEN amount_base END), 0) AS income,
-          COALESCE(SUM(CASE WHEN type = 'expense' THEN amount_base END), 0) AS expense
+        SELECT substr(tx_date, 1, 7) AS month, type, amount_original, currency_original
         FROM transactions
-        WHERE user_id = ?
-        GROUP BY substr(tx_date, 1, 7)
+        WHERE user_id = ? AND type IN ('income', 'expense')
         ORDER BY month DESC
-        LIMIT 3
       `
     )
     .all(userId);
   if (!rows.length) return 0;
-  const burns = rows.map((row) => Math.max(0, Number(row.expense) - Number(row.income)));
+  const byMonth = new Map();
+  for (const row of rows) {
+    const current = byMonth.get(row.month) || { income: 0, expense: 0 };
+    const converted = convertCurrency(
+      Number(row.amount_original || 0),
+      normalizeCurrency(row.currency_original || baseCurrency),
+      baseCurrency
+    );
+    if (row.type === "income") {
+      current.income += converted;
+    } else if (row.type === "expense") {
+      current.expense += converted;
+    }
+    byMonth.set(row.month, current);
+  }
+  const months = [...byMonth.keys()].sort((a, b) => b.localeCompare(a)).slice(0, 3);
+  const burns = months.map((month) => {
+    const row = byMonth.get(month);
+    return Math.max(0, row.expense - row.income);
+  });
   return burns.reduce((sum, value) => sum + value, 0) / burns.length;
 }
 
 function buildRiskPayload(db, userId, month) {
-  const netWorth =
-    Number(
-      db
-        .prepare("SELECT COALESCE(SUM(balance), 0) AS value FROM accounts WHERE user_id = ?")
-        .get(userId).value
-    ) || 0;
-  const cryptoValue =
-    Number(
-      db
-        .prepare(
-          "SELECT COALESCE(SUM(balance), 0) AS value FROM accounts WHERE user_id = ? AND type IN ('crypto_wallet', 'exchange')"
-        )
-        .get(userId).value
-    ) || 0;
+  const baseCurrency = getUserSettings(db, userId).base_currency;
+  const accountRows = db
+    .prepare("SELECT balance, currency, type FROM accounts WHERE user_id = ?")
+    .all(userId);
+  let netWorth = 0;
+  let cryptoValue = 0;
+  for (const account of accountRows) {
+    const valueBase = convertCurrency(
+      Number(account.balance),
+      normalizeCurrency(account.currency),
+      baseCurrency
+    );
+    netWorth += valueBase;
+    if (account.type === "crypto_wallet" || account.type === "exchange") {
+      cryptoValue += valueBase;
+    }
+  }
 
-  const incomeRows = db
+  const incomeTxRows = db
     .prepare(
       `
-        SELECT substr(tx_date, 1, 7) AS month, COALESCE(SUM(amount_base), 0) AS income
+        SELECT substr(tx_date, 1, 7) AS month, amount_original, currency_original
         FROM transactions
         WHERE user_id = ? AND type = 'income'
-        GROUP BY substr(tx_date, 1, 7)
-        ORDER BY month DESC
-        LIMIT 6
       `
     )
-    .all(userId)
-    .map((row) => Number(row.income));
+    .all(userId);
+  const incomeByMonth = new Map();
+  for (const row of incomeTxRows) {
+    const converted = convertCurrency(
+      Number(row.amount_original || 0),
+      normalizeCurrency(row.currency_original || baseCurrency),
+      baseCurrency
+    );
+    incomeByMonth.set(row.month, (incomeByMonth.get(row.month) || 0) + converted);
+  }
+  const incomeRows = [...incomeByMonth.entries()]
+    .sort((a, b) => b[0].localeCompare(a[0]))
+    .slice(0, 6)
+    .map(([, value]) => value);
   const avgIncome =
     incomeRows.length > 0
       ? incomeRows.reduce((sum, value) => sum + value, 0) / incomeRows.length
@@ -1391,34 +1500,28 @@ function buildRiskPayload(db, userId, month) {
       : 0;
   const incomeVolatility = avgIncome > 0 ? Math.sqrt(variance) / avgIncome : 0;
 
-  const fixedCostInMonth =
-    Number(
-      db
-        .prepare(
-          `
-            SELECT COALESCE(SUM(amount_base), 0) AS value
-            FROM transactions
-            WHERE user_id = ?
-              AND type = 'expense'
-              AND substr(tx_date, 1, 7) = ?
-              AND category_l2 IN (${[...FIXED_COST_L2].map(() => "?").join(", ")})
-          `
-        )
-        .get(userId, month, ...FIXED_COST_L2).value
-    ) || 0;
-
-  const totalExpenseInMonth =
-    Number(
-      db
-        .prepare(
-          `
-            SELECT COALESCE(SUM(amount_base), 0) AS value
-            FROM transactions
-            WHERE user_id = ? AND type = 'expense' AND substr(tx_date, 1, 7) = ?
-          `
-        )
-        .get(userId, month).value
-    ) || 0;
+  const expenseRows = db
+    .prepare(
+      `
+        SELECT category_l2, amount_original, currency_original
+        FROM transactions
+        WHERE user_id = ? AND type = 'expense' AND substr(tx_date, 1, 7) = ?
+      `
+    )
+    .all(userId, month);
+  let fixedCostInMonth = 0;
+  let totalExpenseInMonth = 0;
+  for (const row of expenseRows) {
+    const converted = convertCurrency(
+      Number(row.amount_original || 0),
+      normalizeCurrency(row.currency_original || baseCurrency),
+      baseCurrency
+    );
+    totalExpenseInMonth += converted;
+    if (FIXED_COST_L2.has(row.category_l2)) {
+      fixedCostInMonth += converted;
+    }
+  }
 
   return {
     month,
@@ -1431,65 +1534,62 @@ function buildRiskPayload(db, userId, month) {
   };
 }
 
-function buildMonthlyReviewPayload(db, userId, month) {
-  const expenseByL1 = db
+function buildMonthlyReviewPayload(db, userId, month, baseCurrency = "USD") {
+  const rows = db
     .prepare(
       `
-        SELECT category_l1, COALESCE(SUM(amount_base), 0) AS total
-        FROM transactions
-        WHERE user_id = ? AND type = 'expense' AND substr(tx_date, 1, 7) = ?
-        GROUP BY category_l1
-        ORDER BY total DESC
-      `
-    )
-    .all(userId, month)
-    .map((row) => ({ category_l1: row.category_l1, total: Number(row.total) }));
-  const expenseByL2 = db
-    .prepare(
-      `
-        SELECT category_l1, category_l2, COALESCE(SUM(amount_base), 0) AS total
-        FROM transactions
-        WHERE user_id = ? AND type = 'expense' AND substr(tx_date, 1, 7) = ?
-        GROUP BY category_l1, category_l2
-        ORDER BY total DESC
-      `
-    )
-    .all(userId, month)
-    .map((row) => ({
-      category_l1: row.category_l1,
-      category_l2: row.category_l2,
-      total: Number(row.total)
-    }));
-  const topExpenses = db
-    .prepare(
-      `
-        SELECT id, tx_date, amount_base, category_l1, category_l2, note
-        FROM transactions
-        WHERE user_id = ? AND type = 'expense' AND substr(tx_date, 1, 7) = ?
-        ORDER BY amount_base DESC, id DESC
-        LIMIT 5
-      `
-    )
-    .all(userId, month)
-    .map((row) => ({ ...row, amount_base: Number(row.amount_base) }));
-  const totals = db
-    .prepare(
-      `
-        SELECT
-          COALESCE(SUM(CASE WHEN type = 'expense' THEN amount_base END), 0) AS expense_total,
-          COALESCE(SUM(CASE WHEN type = 'transfer' THEN amount_base END), 0) AS transfer_total
+        SELECT id, tx_date, type, amount_original, currency_original, category_l1, category_l2, note
         FROM transactions
         WHERE user_id = ? AND substr(tx_date, 1, 7) = ?
       `
     )
-    .get(userId, month);
+    .all(userId, month);
 
-  const expenseTotal = Number(totals.expense_total) || 0;
-  const transferTotal = Number(totals.transfer_total) || 0;
+  const byL1 = new Map();
+  const byL2 = new Map();
+  const expenseList = [];
+  let expenseTotal = 0;
+  let transferTotal = 0;
+  for (const row of rows) {
+    const converted = convertCurrency(
+      Number(row.amount_original || 0),
+      normalizeCurrency(row.currency_original || baseCurrency),
+      baseCurrency
+    );
+    if (row.type === "expense") {
+      expenseTotal += converted;
+      byL1.set(row.category_l1, (byL1.get(row.category_l1) || 0) + converted);
+      const key = `${row.category_l1}|||${row.category_l2}`;
+      byL2.set(key, (byL2.get(key) || 0) + converted);
+      expenseList.push({
+        id: row.id,
+        tx_date: row.tx_date,
+        amount_base: converted,
+        category_l1: row.category_l1,
+        category_l2: row.category_l2,
+        note: row.note
+      });
+    } else if (row.type === "transfer") {
+      transferTotal += converted;
+    }
+  }
+
+  const expenseByL1 = [...byL1.entries()]
+    .map(([category_l1, total]) => ({ category_l1, total }))
+    .sort((a, b) => b.total - a.total);
+  const expenseByL2 = [...byL2.entries()]
+    .map(([key, total]) => {
+      const [category_l1, category_l2] = key.split("|||");
+      return { category_l1, category_l2, total };
+    })
+    .sort((a, b) => b.total - a.total);
+  const topExpenses = expenseList.sort((a, b) => b.amount_base - a.amount_base).slice(0, 5);
+
   const summary = buildMonthlySummary(expenseByL1, expenseTotal, transferTotal);
 
   return {
     month,
+    base_currency: baseCurrency,
     expense_total: expenseTotal,
     transfer_total: transferTotal,
     expense_structure_l1: expenseByL1,
@@ -1541,6 +1641,83 @@ function getTransactionWithTags(db, userId, txId) {
     ...row,
     amount_base: Number(row.amount_base),
     tags: row.tag_names ? row.tag_names.split("|") : []
+  };
+}
+
+function convertCurrency(amount, fromCurrency, toCurrency) {
+  const from = normalizeCurrency(fromCurrency || "USD");
+  const to = normalizeCurrency(toCurrency || "USD");
+  if (!Number.isFinite(Number(amount))) return 0;
+  const numeric = Number(amount);
+  if (from === to) return numeric;
+  return Number((numeric * fallbackFxRate(from, to)).toFixed(8));
+}
+
+function rebuildUserBalances(db, userId) {
+  const accounts = db
+    .prepare("SELECT id, currency, opening_balance, balance FROM accounts WHERE user_id = ? ORDER BY id")
+    .all(userId);
+  const accountMap = new Map();
+  for (const account of accounts) {
+    accountMap.set(account.id, {
+      id: account.id,
+      currency: normalizeCurrency(account.currency),
+      opening_balance: Number(account.opening_balance || 0),
+      recalculated: Number(account.opening_balance || 0),
+      previous_balance: Number(account.balance || 0)
+    });
+  }
+
+  const txRows = db
+    .prepare(
+      `
+        SELECT
+          id, type, amount_original, currency_original, account_from_id, account_to_id
+        FROM transactions
+        WHERE user_id = ?
+        ORDER BY id
+      `
+    )
+    .all(userId);
+
+  for (const tx of txRows) {
+    const amountOriginal = Number(tx.amount_original || 0);
+    const sourceCurrency = normalizeCurrency(tx.currency_original || "USD");
+
+    if (tx.type === "expense" && tx.account_from_id && accountMap.has(tx.account_from_id)) {
+      const account = accountMap.get(tx.account_from_id);
+      account.recalculated -= convertCurrency(amountOriginal, sourceCurrency, account.currency);
+    } else if (tx.type === "income" && tx.account_to_id && accountMap.has(tx.account_to_id)) {
+      const account = accountMap.get(tx.account_to_id);
+      account.recalculated += convertCurrency(amountOriginal, sourceCurrency, account.currency);
+    } else if (tx.type === "transfer") {
+      if (tx.account_from_id && accountMap.has(tx.account_from_id)) {
+        const source = accountMap.get(tx.account_from_id);
+        source.recalculated -= convertCurrency(amountOriginal, sourceCurrency, source.currency);
+      }
+      if (tx.account_to_id && accountMap.has(tx.account_to_id)) {
+        const target = accountMap.get(tx.account_to_id);
+        target.recalculated += convertCurrency(amountOriginal, sourceCurrency, target.currency);
+      }
+    }
+  }
+
+  const save = db.transaction(() => {
+    const update = db.prepare("UPDATE accounts SET balance = ? WHERE id = ? AND user_id = ?");
+    for (const account of accountMap.values()) {
+      update.run(Number(account.recalculated.toFixed(8)), account.id, userId);
+    }
+  });
+  save();
+
+  return {
+    ok: true,
+    accounts: [...accountMap.values()].map((row) => ({
+      id: row.id,
+      currency: row.currency,
+      previous_balance: row.previous_balance,
+      recalculated_balance: Number(row.recalculated.toFixed(8))
+    }))
   };
 }
 

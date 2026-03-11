@@ -11,6 +11,7 @@ CREATE TABLE IF NOT EXISTS accounts (
     name TEXT NOT NULL,
     type TEXT NOT NULL,
     currency TEXT NOT NULL,
+    opening_balance NUMERIC NOT NULL DEFAULT 0,
     balance NUMERIC NOT NULL DEFAULT 0,
     created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
     FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE

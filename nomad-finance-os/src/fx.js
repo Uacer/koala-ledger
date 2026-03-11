@@ -11,7 +11,27 @@ const FALLBACK_USD_RATES = {
 };
 
 function normalizeCurrency(currency) {
-  return String(currency || "USD").trim().toUpperCase();
+  const raw = String(currency || "USD").trim();
+  const upper = raw.toUpperCase();
+  const aliasMap = {
+    BAHT: "THB",
+    THAIBAHT: "THB",
+    "泰铢": "THB",
+    "บาท": "THB",
+    CNH: "CNY",
+    RMB: "CNY",
+    "人民币": "CNY",
+    "人民幣": "CNY",
+    "元": "CNY",
+    "美元": "USD",
+    "美金": "USD",
+    "欧元": "EUR",
+    "英镑": "GBP",
+    "日元": "JPY",
+    "新币": "SGD",
+    "新元": "SGD"
+  };
+  return aliasMap[upper] || aliasMap[raw] || upper;
 }
 
 function fallbackFxRate(from, to) {

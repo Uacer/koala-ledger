@@ -400,3 +400,124 @@ test("analytics summary returns key event counters", async () => {
   assert.ok(analytics.body.events.transaction_created >= 1);
   assert.ok(analytics.body.events.monthly_review_opened >= 1);
 });
+
+test("account balances are updated in account currency, dashboard unified in base currency", async () => {
+  const { api } = createHarness();
+  const month = "2026-03";
+
+  await api.put("/api/v1/settings").send({
+    base_currency: "USD",
+    timezone: "UTC"
+  });
+
+  const cnyAccount = await createAccount(api, {
+    name: "CNY Wallet",
+    type: "cash",
+    currency: "CNY",
+    balance: 0
+  });
+
+  const incomeRes = await api.post("/api/v1/transactions").send({
+    date: "2026-03-12",
+    type: "income",
+    amount_original: 100,
+    currency_original: "USD",
+    fx_rate: 1,
+    account_to_id: cnyAccount.id,
+    note: "salary"
+  });
+  assert.equal(incomeRes.status, 201);
+  assert.equal(incomeRes.body.amount_base, 100);
+
+  const accountsRes = await api.get("/api/v1/accounts").send();
+  assert.equal(accountsRes.status, 200);
+  const cnyAfter = accountsRes.body.find((x) => x.id === cnyAccount.id);
+  assert.ok(cnyAfter);
+  assert.equal(Number(cnyAfter.opening_balance), 0);
+  assert.ok(Number(cnyAfter.balance) > 719 && Number(cnyAfter.balance) < 721);
+
+  const dashboardRes = await api.get(`/api/v1/dashboard?month=${month}`).send();
+  assert.equal(dashboardRes.status, 200);
+  assert.ok(dashboardRes.body.monthly_income > 99 && dashboardRes.body.monthly_income < 101);
+  assert.ok(dashboardRes.body.net_worth > 99 && dashboardRes.body.net_worth < 101);
+});
+
+test("admin rebuild-balances recalculates account balances from opening balance + ledger", async () => {
+  const { db, api } = createHarness();
+  const cnyAccount = await createAccount(api, {
+    name: "CNY Wallet",
+    type: "cash",
+    currency: "CNY",
+    balance: 0
+  });
+
+  const incomeRes = await api.post("/api/v1/transactions").send({
+    date: "2026-03-12",
+    type: "income",
+    amount_original: 100,
+    currency_original: "USD",
+    account_to_id: cnyAccount.id
+  });
+  assert.equal(incomeRes.status, 201);
+
+  db.prepare("UPDATE accounts SET balance = 1 WHERE id = ?").run(cnyAccount.id);
+  const rebuildRes = await api.post("/api/v1/admin/rebuild-balances").send({});
+  assert.equal(rebuildRes.status, 201);
+  const row = rebuildRes.body.accounts.find((x) => x.id === cnyAccount.id);
+  assert.ok(row);
+  assert.equal(Number(row.previous_balance), 1);
+  assert.ok(Number(row.recalculated_balance) > 719 && Number(row.recalculated_balance) < 721);
+});
+
+test("parse-text handles baht alias and maps travel phrase to lifestyle", async () => {
+  const { api } = createHarness();
+  const account = await createAccount(api, {
+    name: "Main Wallet",
+    type: "cash",
+    currency: "USD",
+    balance: 1000
+  });
+  assert.ok(account.id > 0);
+
+  const parseRes = await api.post("/api/v1/transactions/parse-text").send({
+    text: "旅游花了10000泰铢"
+  });
+  assert.equal(parseRes.status, 201);
+  assert.equal(parseRes.body.draft.amount_original, 10000);
+  assert.equal(parseRes.body.draft.currency_original, "THB");
+  assert.equal(parseRes.body.draft.type, "expense");
+  assert.equal(parseRes.body.draft.category_l1, "Lifestyle");
+  assert.equal(parseRes.body.draft.category_l2, "Entertainment");
+});
+
+test("changing base currency changes monthly income/expense display values", async () => {
+  const { api } = createHarness();
+  const month = "2026-03";
+  const account = await createAccount(api, {
+    name: "USD Wallet",
+    type: "cash",
+    currency: "USD",
+    balance: 0
+  });
+
+  const txRes = await api.post("/api/v1/transactions").send({
+    date: "2026-03-18",
+    type: "income",
+    amount_original: 100,
+    currency_original: "USD",
+    account_to_id: account.id
+  });
+  assert.equal(txRes.status, 201);
+
+  const before = await api.get(`/api/v1/dashboard?month=${month}`).send();
+  assert.equal(before.status, 200);
+  assert.ok(before.body.monthly_income > 99 && before.body.monthly_income < 101);
+
+  const settingRes = await api.put("/api/v1/settings").send({ base_currency: "CNY" });
+  assert.equal(settingRes.status, 200);
+  assert.equal(settingRes.body.base_currency, "CNY");
+
+  const after = await api.get(`/api/v1/dashboard?month=${month}`).send();
+  assert.equal(after.status, 200);
+  assert.ok(after.body.monthly_income > 719 && after.body.monthly_income < 721);
+});
