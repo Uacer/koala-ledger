@@ -508,10 +508,21 @@ test("changing base currency changes monthly income/expense display values", asy
     account_to_id: account.id
   });
   assert.equal(txRes.status, 201);
+  const expenseRes = await api.post("/api/v1/transactions").send({
+    date: "2026-03-18",
+    type: "expense",
+    amount_original: 10,
+    currency_original: "USD",
+    category_l1: "Lifestyle",
+    category_l2: "Dining",
+    account_from_id: account.id
+  });
+  assert.equal(expenseRes.status, 201);
 
   const before = await api.get(`/api/v1/dashboard?month=${month}`).send();
   assert.equal(before.status, 200);
   assert.ok(before.body.monthly_income > 99 && before.body.monthly_income < 101);
+  assert.ok(before.body.monthly_expense > 9 && before.body.monthly_expense < 11);
 
   const settingRes = await api.put("/api/v1/settings").send({ base_currency: "CNY" });
   assert.equal(settingRes.status, 200);
@@ -520,4 +531,28 @@ test("changing base currency changes monthly income/expense display values", asy
   const after = await api.get(`/api/v1/dashboard?month=${month}`).send();
   assert.equal(after.status, 200);
   assert.ok(after.body.monthly_income > 719 && after.body.monthly_income < 721);
+  assert.ok(after.body.monthly_expense > 71 && after.body.monthly_expense < 73);
+});
+
+test("crypto exposure never negative even when net worth is negative", async () => {
+  const { api } = createHarness();
+  const crypto = await createAccount(api, {
+    name: "Exchange",
+    type: "exchange",
+    currency: "USD",
+    balance: 100
+  });
+  assert.ok(crypto.id > 0);
+  const liabilityLike = await createAccount(api, {
+    name: "Debt Proxy",
+    type: "bank",
+    currency: "USD",
+    balance: -1000
+  });
+  assert.ok(liabilityLike.id > 0);
+
+  const riskRes = await api.get("/api/v1/metrics/risk?month=2026-03").send();
+  assert.equal(riskRes.status, 200);
+  assert.ok(riskRes.body.crypto_exposure >= 0);
+  assert.ok(riskRes.body.crypto_exposure <= 1);
 });

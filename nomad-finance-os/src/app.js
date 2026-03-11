@@ -1455,7 +1455,8 @@ function buildRiskPayload(db, userId, month) {
     .prepare("SELECT balance, currency, type FROM accounts WHERE user_id = ?")
     .all(userId);
   let netWorth = 0;
-  let cryptoValue = 0;
+  let positiveAssetValue = 0;
+  let cryptoPositiveAssetValue = 0;
   for (const account of accountRows) {
     const valueBase = convertCurrency(
       Number(account.balance),
@@ -1463,10 +1464,22 @@ function buildRiskPayload(db, userId, month) {
       baseCurrency
     );
     netWorth += valueBase;
-    if (account.type === "crypto_wallet" || account.type === "exchange") {
-      cryptoValue += valueBase;
+    if (valueBase > 0) {
+      positiveAssetValue += valueBase;
+      if (account.type === "crypto_wallet" || account.type === "exchange") {
+        cryptoPositiveAssetValue += valueBase;
+      }
     }
   }
+
+  let cryptoExposure = 0;
+  if (positiveAssetValue > 0) {
+    cryptoExposure = cryptoPositiveAssetValue / positiveAssetValue;
+    cryptoExposure = Math.min(1, Math.max(0, cryptoExposure));
+  }
+
+  const rawCryptoOverNetWorth =
+    netWorth !== 0 ? Number((cryptoPositiveAssetValue / Math.abs(netWorth)).toFixed(4)) : 0;
 
   const incomeTxRows = db
     .prepare(
@@ -1525,7 +1538,10 @@ function buildRiskPayload(db, userId, month) {
 
   return {
     month,
-    crypto_exposure: netWorth > 0 ? Number((cryptoValue / netWorth).toFixed(4)) : 0,
+    crypto_exposure: Number(cryptoExposure.toFixed(4)),
+    crypto_positive_asset_value: Number(cryptoPositiveAssetValue.toFixed(4)),
+    total_positive_asset_value: Number(positiveAssetValue.toFixed(4)),
+    crypto_over_abs_net_worth: rawCryptoOverNetWorth,
     income_volatility: Number(incomeVolatility.toFixed(4)),
     fixed_cost_ratio:
       totalExpenseInMonth > 0

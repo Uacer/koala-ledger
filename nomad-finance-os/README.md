@@ -16,6 +16,22 @@ Web-first MVP backend implementing:
 - Account balances tracked in each account's own currency, while dashboard metrics are unified into base currency
 - Dashboard/Review/Budget spent calculations are dynamically recomputed in current base currency from original transaction currency
 
+## Budget vs Funds
+
+- `Budget`: spending limit by category and period (monthly/yearly), used for overspend control.
+- `Funds`: money buckets balance/allocation (Travel Fund, Emergency Fund...), used for planning and earmarking cash.
+
+These are complementary:
+- Budget answers: "how much I should spend".
+- Funds answer: "how much cash I reserved for a purpose".
+
+## Crypto Exposure Formula
+
+`crypto_exposure = crypto_positive_asset_value / total_positive_asset_value`
+
+- Uses only positive asset balances (converted to current base currency).
+- Clamped to `[0, 1]`, so it will not become negative when net worth is negative.
+
 ## Quick Start
 
 ```bash

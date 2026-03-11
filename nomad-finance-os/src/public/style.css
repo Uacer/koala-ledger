@@ -308,6 +308,12 @@ h3 {
   gap: 10px;
 }
 
+.hint {
+  margin: -4px 0 0;
+  color: var(--muted);
+  font-size: 0.9rem;
+}
+
 .pre {
   margin: 0;
   white-space: pre-wrap;
