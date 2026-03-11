@@ -25,7 +25,6 @@
           <span id="monthLabelText">Month</span>
           <input id="monthInput" type="month" />
         </label>
-        <button id="openQuickAddBtn" class="icon-btn icon-add" type="button" aria-label="Add expense">+</button>
         <button id="openSettingsBtn" class="icon-btn" type="button" aria-label="Open settings">⚙</button>
         <input id="userIdInput" type="number" min="1" value="1" hidden />
         <button id="reloadBtn" class="hidden" type="button">Reload</button>
@@ -51,10 +50,6 @@
             <div>
               <div class="hero-label" id="heroNetWorthLabel">Net Worth</div>
               <div class="hero-value" id="heroNetWorthValue">0.00</div>
-            </div>
-            <div>
-              <div class="hero-label" id="heroLiquidCashLabel">Liquid Cash</div>
-              <div class="hero-value" id="heroLiquidCashValue">0.00</div>
             </div>
           </div>
           <div class="hero-label muted" id="heroCompositionLabel">Net Worth Composition</div>
@@ -83,11 +78,6 @@
           <h3 id="riskTitle">Risk Metrics</h3>
           <div id="riskMetrics" class="list-block"></div>
         </article>
-        <div class="section-head">
-          <h3 id="budgetStatusTitle">Budget Status (L1 only)</h3>
-          <button id="openBudgetSheetBtn" class="btn btn-ghost" type="button">Edit Budget</button>
-        </div>
-        <div id="budgetStatusList" class="list-block"></div>
       </section>
 
       <section id="capturePanel" class="panel">
@@ -400,6 +390,8 @@
       </section>
     </main>
 
+    <button id="openQuickAddBtn" class="fab" type="button" aria-label="Add transaction">+</button>
+
     <section id="quickEntrySheet" class="sheet hidden" aria-hidden="true">
       <div class="sheet-backdrop" data-close-sheet="quickEntrySheet"></div>
       <article class="sheet-card">
@@ -408,6 +400,19 @@
           <button class="btn btn-ghost" type="button" data-close-sheet="quickEntrySheet">Close</button>
         </div>
         <form id="quickEntryForm" class="sheet-form">
+          <div class="step-block">
+            <div class="segmented">
+              <button class="seg-btn active" type="button" data-quick-type="expense" id="quickTypeExpense">
+                Expense
+              </button>
+              <button class="seg-btn" type="button" data-quick-type="income" id="quickTypeIncome">
+                Income
+              </button>
+              <button class="seg-btn" type="button" data-quick-type="transfer" id="quickTypeTransfer">
+                Transfer
+              </button>
+            </div>
+          </div>
           <label>
             <span id="quickEntryDateLabel">Date</span>
             <input name="date" type="date" required />
@@ -428,9 +433,13 @@
           </section>
           <section id="quickStepSpend" class="step-block hidden">
             <p class="step-title" id="quickStepSpendTitle">Step 3 · Account & Currency</p>
-            <label>
+            <label id="quickEntryAccountFromWrap">
               <span id="quickEntryAccountLabel">Account</span>
-              <select name="account_from_id" required></select>
+              <select name="account_from_id"></select>
+            </label>
+            <label id="quickEntryAccountToWrap" class="hidden">
+              <span id="quickEntryAccountToLabel">Account To</span>
+              <select name="account_to_id"></select>
             </label>
             <label>
               <span id="quickEntryCurrencyLabel">Currency</span>

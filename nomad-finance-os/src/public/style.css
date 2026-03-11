@@ -137,6 +137,46 @@ textarea {
   line-height: 1;
 }
 
+.fab {
+  position: fixed;
+  left: 50%;
+  bottom: 18px;
+  transform: translateX(-50%);
+  width: 56px;
+  height: 56px;
+  border-radius: 50%;
+  border: 1px solid var(--ink);
+  background: var(--ink);
+  color: #f6f1e8;
+  font-size: 1.6rem;
+  line-height: 1;
+  display: grid;
+  place-items: center;
+  z-index: 80;
+  box-shadow: 0 12px 24px rgba(35, 28, 20, 0.25);
+}
+
+.segmented {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 6px;
+}
+
+.seg-btn {
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  padding: 8px 10px;
+  background: #f7f1e8;
+  color: var(--ink-soft);
+  cursor: pointer;
+}
+
+.seg-btn.active {
+  background: var(--ink);
+  color: var(--accent-ink);
+  border-color: var(--ink);
+}
+
 .tabs {
   display: none;
 }

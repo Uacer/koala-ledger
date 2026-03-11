@@ -8,6 +8,7 @@ const state = {
   dashboard: null,
   risk: null,
   quickEntryMax: 0,
+  quickEntryType: "expense",
   txTagFilter: "",
   latestExtractionId: null,
   latestExtractionDraft: null
@@ -64,6 +65,8 @@ const I18N = {
     budgetPlanSummary: "Planned {planned} · Spent {spent} · Remaining {remaining}",
     editBudget: "Edit Budget",
     addExpense: "Add Expense",
+    addIncome: "Add Income",
+    addTransfer: "Add Transfer",
     close: "Close",
     date: "Date",
     stepL1Title: "Step 1 · Choose Category L1",
@@ -73,11 +76,14 @@ const I18N = {
     categoryL1: "Category L1",
     categoryL2: "Category L2",
     account: "Account",
+    accountTo: "Account To",
     currency: "Currency",
     amount: "Amount",
     amountWheel: "Amount Wheel",
     note: "Note",
     saveExpense: "Save Expense",
+    saveIncome: "Save Income",
+    saveTransfer: "Save Transfer",
     budgetEditor: "Budget Editor",
     totalAmount: "Total Amount",
     saveBudget: "Save Budget",
@@ -148,6 +154,8 @@ const I18N = {
     budgetPlanSummary: "计划 {planned} · 已花 {spent} · 剩余 {remaining}",
     editBudget: "编辑预算",
     addExpense: "新增支出",
+    addIncome: "新增收入",
+    addTransfer: "新增转账",
     close: "关闭",
     date: "日期",
     stepL1Title: "第 1 步 · 选择一级分类",
@@ -157,11 +165,14 @@ const I18N = {
     categoryL1: "一级分类",
     categoryL2: "二级分类",
     account: "账户",
+    accountTo: "入账账户",
     currency: "币种",
     amount: "金额",
     amountWheel: "金额滚轮",
     note: "备注",
     saveExpense: "保存支出",
+    saveIncome: "保存收入",
+    saveTransfer: "保存转账",
     budgetEditor: "预算编辑",
     totalAmount: "预算总额",
     saveBudget: "保存预算",
@@ -261,12 +272,21 @@ function bindUI() {
   $("#transactionForm [name=category_l1]").addEventListener("change", populateL2Select);
   $("#openQuickAddBtn").addEventListener("click", () => openSheet("quickEntrySheet"));
   $("#openSettingsBtn").addEventListener("click", () => openSheet("settingsSheet"));
-  $("#openBudgetSheetBtn").addEventListener("click", () => {
-    const monthInput = $("#quickBudgetForm [name=month]");
-    if (monthInput) monthInput.value = state.month;
-    openSheet("budgetSheet");
-  });
+  const budgetBtn = $("#openBudgetSheetBtn");
+  if (budgetBtn) {
+    budgetBtn.addEventListener("click", () => {
+      const monthInput = $("#quickBudgetForm [name=month]");
+      if (monthInput) monthInput.value = state.month;
+      openSheet("budgetSheet");
+    });
+  }
   $("#quickEntryForm").addEventListener("submit", submitQuickEntryForm);
+  for (const btn of document.querySelectorAll("[data-quick-type]")) {
+    btn.addEventListener("click", () => {
+      const type = String(btn.getAttribute("data-quick-type") || "expense");
+      setQuickEntryType(type);
+    });
+  }
   $("#quickEntryForm [name=category_l1]").addEventListener("change", () => {
     populateQuickEntryL2();
   });
@@ -274,6 +294,9 @@ function bindUI() {
     void updateQuickEntryFlow();
   });
   $("#quickEntryForm [name=account_from_id]").addEventListener("change", () => {
+    void updateQuickEntryFlow();
+  });
+  $("#quickEntryForm [name=account_to_id]").addEventListener("change", () => {
     void updateQuickEntryFlow();
   });
   $("#quickEntryForm [name=currency_original]").addEventListener("change", () => {
@@ -355,6 +378,7 @@ function openSheet(id) {
     if (currencyInput && state.settings?.base_currency) {
       currencyInput.value = ensureUICurrency(state.settings.base_currency);
     }
+    setQuickEntryType(state.quickEntryType || "expense");
     void updateQuickEntryFlow();
   }
   if (id === "budgetSheet") {
@@ -592,11 +616,19 @@ function populateQuickEntryL2() {
 
 function populateQuickEntryAccounts() {
   const select = $("#quickEntryForm [name=account_from_id]");
+  const selectTo = $("#quickEntryForm [name=account_to_id]");
   if (!select) return;
   select.innerHTML = `<option value="">-- ${escapeHtml(t("selectAccount"))} --</option>`;
   for (const account of state.accounts || []) {
     const label = `${account.name} · ${account.type} · ${formatMoney(account.balance)} ${account.currency}`;
     select.appendChild(new Option(label, String(account.id)));
+  }
+  if (selectTo) {
+    selectTo.innerHTML = `<option value="">-- ${escapeHtml(t("selectAccount"))} --</option>`;
+    for (const account of state.accounts || []) {
+      const label = `${account.name} · ${account.type} · ${formatMoney(account.balance)} ${account.currency}`;
+      selectTo.appendChild(new Option(label, String(account.id)));
+    }
   }
   void updateQuickEntryFlow();
 }
@@ -644,11 +676,22 @@ async function updateQuickEntryFlow() {
   const l1 = $("#quickEntryForm [name=category_l1]")?.value || "";
   const l2 = $("#quickEntryForm [name=category_l2]")?.value || "";
   const accountId = parseOptionalInt($("#quickEntryForm [name=account_from_id]")?.value);
+  const accountToId = parseOptionalInt($("#quickEntryForm [name=account_to_id]")?.value);
   const currency = ensureUICurrency($("#quickEntryForm [name=currency_original]")?.value || "USD");
 
-  toggleQuickStep("quickStepL2", Boolean(l1));
-  toggleQuickStep("quickStepSpend", Boolean(l1 && l2));
-  const amountStepVisible = Boolean(l1 && l2 && accountId && currency);
+  const isExpense = state.quickEntryType === "expense";
+  const isIncome = state.quickEntryType === "income";
+  const isTransfer = state.quickEntryType === "transfer";
+  toggleQuickStep("quickStepL1", isExpense);
+  toggleQuickStep("quickStepL2", isExpense && Boolean(l1));
+  toggleQuickStep("quickStepSpend", isExpense ? Boolean(l1 && l2) : true);
+
+  const spendReady = isExpense
+    ? Boolean(accountId && currency)
+    : isIncome
+      ? Boolean(accountToId && currency)
+      : Boolean(accountId && accountToId && currency);
+  const amountStepVisible = isExpense ? Boolean(l1 && l2 && spendReady) : spendReady;
   toggleQuickStep("quickStepAmount", amountStepVisible);
 
   if (!amountStepVisible) {
@@ -656,13 +699,44 @@ async function updateQuickEntryFlow() {
     validateQuickEntryAmount();
     return;
   }
-  await refreshQuickEntryAmountLimit(accountId, currency);
+  if (isExpense || isTransfer) {
+    await refreshQuickEntryAmountLimit(accountId, currency);
+  } else {
+    applyQuickEntryMax(50000, currency);
+  }
 }
 
 function toggleQuickStep(id, visible) {
   const node = document.getElementById(id);
   if (!node) return;
   node.classList.toggle("hidden", !visible);
+}
+
+function setQuickEntryType(type) {
+  const next = type === "income" || type === "transfer" ? type : "expense";
+  state.quickEntryType = next;
+  const expenseBtn = $("#quickTypeExpense");
+  const incomeBtn = $("#quickTypeIncome");
+  const transferBtn = $("#quickTypeTransfer");
+  if (expenseBtn) expenseBtn.classList.toggle("active", next === "expense");
+  if (incomeBtn) incomeBtn.classList.toggle("active", next === "income");
+  if (transferBtn) transferBtn.classList.toggle("active", next === "transfer");
+
+  const accountFrom = $("#quickEntryForm [name=account_from_id]");
+  const accountFromWrap = $("#quickEntryAccountFromWrap");
+  const accountToWrap = $("#quickEntryAccountToWrap");
+  if (accountFrom) accountFrom.toggleAttribute("required", next !== "income");
+  if (accountFromWrap) accountFromWrap.classList.toggle("hidden", next === "income");
+  if (accountToWrap) accountToWrap.classList.toggle("hidden", next === "expense");
+  const accountTo = $("#quickEntryForm [name=account_to_id]");
+  if (accountTo) accountTo.toggleAttribute("required", next !== "expense");
+  const l1Select = $("#quickEntryForm [name=category_l1]");
+  const l2Select = $("#quickEntryForm [name=category_l2]");
+  if (l1Select) l1Select.toggleAttribute("required", next === "expense");
+  if (l2Select) l2Select.toggleAttribute("required", next === "expense");
+
+  applyI18n();
+  void updateQuickEntryFlow();
 }
 
 async function refreshQuickEntryAmountLimit(accountId, currency) {
@@ -837,7 +911,7 @@ async function submitQuickEntryForm(event) {
     showToast(t("invalidAmount"), true);
     return;
   }
-  if (requestedAmount > Number(state.quickEntryMax || 0)) {
+  if ((state.quickEntryType === "expense" || state.quickEntryType === "transfer") && requestedAmount > Number(state.quickEntryMax || 0)) {
     showToast(
       t("amountExceeded", { amount: formatMoney(state.quickEntryMax), currency: currencyCode }),
       true
@@ -846,18 +920,28 @@ async function submitQuickEntryForm(event) {
   }
   const payload = {
     date: fd.get("date"),
-    type: "expense",
+    type: state.quickEntryType,
     amount_original: requestedAmount,
     currency_original: currencyCode,
-    category_l1: fd.get("category_l1"),
-    category_l2: fd.get("category_l2"),
-    account_from_id: parseOptionalInt(fd.get("account_from_id")),
+    category_l1: state.quickEntryType === "expense" ? fd.get("category_l1") : undefined,
+    category_l2: state.quickEntryType === "expense" ? fd.get("category_l2") : undefined,
+    account_from_id:
+      state.quickEntryType !== "income" ? parseOptionalInt(fd.get("account_from_id")) : undefined,
+    account_to_id:
+      state.quickEntryType !== "expense" ? parseOptionalInt(fd.get("account_to_id")) : undefined,
+    transfer_reason: state.quickEntryType === "transfer" ? "normal" : undefined,
     note: fd.get("note") || "",
     tags: []
   };
   try {
     await api("/api/v1/transactions", { method: "POST", body: JSON.stringify(payload) });
-    showToast(t("expenseSaved"));
+    showToast(
+      state.quickEntryType === "income"
+        ? t("saveIncome")
+        : state.quickEntryType === "transfer"
+          ? t("saveTransfer")
+          : t("expenseSaved")
+    );
     closeSheet("quickEntrySheet");
     const amountInput = $("#quickEntryForm [name=amount_original]");
     if (amountInput) amountInput.value = "0";
@@ -1108,7 +1192,6 @@ async function loadDashboard() {
   state.dashboard = dashboard;
   renderHeroSummary(dashboard);
   renderInfographics(dashboard);
-  renderBudgetStatus(dashboard.budget_status || []);
 }
 
 async function loadRisk() {
@@ -1169,18 +1252,23 @@ function renderHeroSummary(dashboard) {
   const netWorth = Number(dashboard.net_worth || 0);
   const liquid = Math.max(0, Number(dashboard.liquid_cash || 0));
   const restricted = Math.max(0, Number(dashboard.restricted_cash_total || 0));
+  const hasRestricted = restricted > 0.0001;
   const compositionBase = Math.max(0.01, liquid + restricted);
-  const liquidPct = Math.max(0, Math.min(100, (liquid / compositionBase) * 100));
-  const restrictedPct = Math.max(0, Math.min(100, 100 - liquidPct));
+  const liquidPct = hasRestricted ? Math.max(0, Math.min(100, (liquid / compositionBase) * 100)) : 100;
+  const restrictedPct = hasRestricted ? Math.max(0, Math.min(100, 100 - liquidPct)) : 0;
   const runway = dashboard.runway_months;
   const runwayLabel = Number.isFinite(Number(runway)) ? `${Number(runway).toFixed(1)}m` : "∞";
 
   setText("heroNetWorthValue", `${formatMoney(netWorth)} ${base}`);
-  setText("heroLiquidCashValue", `${formatMoney(liquid)} ${base}`);
   const liquidPart = $("#heroLiquidPart");
   const restrictedPart = $("#heroRestrictedPart");
+  const restrictedLegend = $("#heroRestrictedLegend");
   if (liquidPart) liquidPart.style.width = `${liquidPct}%`;
-  if (restrictedPart) restrictedPart.style.width = `${restrictedPct}%`;
+  if (restrictedPart) {
+    restrictedPart.style.width = `${restrictedPct}%`;
+    restrictedPart.classList.toggle("hidden", !hasRestricted);
+  }
+  if (restrictedLegend) restrictedLegend.classList.toggle("hidden", !hasRestricted);
 
   $("#heroSubMetrics").innerHTML = `
     <div class="hero-subcard"><div class="k">${t("metricMonthlyIncome")}</div><div class="v">${formatMoney(dashboard.monthly_income)} ${base}</div></div>
@@ -1232,28 +1320,6 @@ function renderPlannedBudgetCard(dashboard) {
     .join("");
 }
 
-function renderBudgetStatus(rows) {
-  const target = $("#budgetStatusList");
-  if (!rows.length) {
-    target.innerHTML = `<div class="list-row muted">${escapeHtml(t("emptyNoBudgetMonth"))}</div>`;
-    return;
-  }
-  target.innerHTML = rows
-    .map((row) => {
-      const total = Number(row.total_amount || 0);
-      const spent = Number(row.spent_amount || 0);
-      const pct = total > 0 ? Math.min((spent / total) * 100, 100) : 0;
-      return `
-        <article class="list-row">
-          <div class="row-main">
-            <strong>${escapeHtml(withL1Emoji(row.category_l1))}</strong>
-            <span class="${row.overspend ? "overspend" : "muted"}">${formatMoney(spent)} / ${formatMoney(total)}</span>
-          </div>
-          <div class="progress-wrap"><div class="progress-fill" style="width:${pct}%"></div></div>
-        </article>`;
-    })
-    .join("");
-}
 
 function renderAccounts() {
   const target = $("#accountList");
@@ -1520,16 +1586,23 @@ function applyI18n() {
   setText("monthLabelText", t("month"));
   setText("dashboardTitle", t("dashboard"));
   setText("heroNetWorthLabel", t("metricNetWorth"));
-  setText("heroLiquidCashLabel", t("metricLiquidCash"));
   setText("heroCompositionLabel", t("netWorthComposition"));
   setText("heroLiquidLegend", t("labelLiquid"));
   setText("heroRestrictedLegend", t("labelRestricted"));
   setText("budgetPlanTitle", t("plannedBudget"));
   setText("cashFlowTitle", t("cashFlowPulse"));
   setText("riskTitle", t("riskMetrics"));
-  setText("budgetStatusTitle", t("budgetStatus"));
-  setText("openBudgetSheetBtn", t("editBudget"));
-  setText("quickEntryTitle", t("addExpense"));
+  setText(
+    "quickEntryTitle",
+    state.quickEntryType === "income"
+      ? t("addIncome")
+      : state.quickEntryType === "transfer"
+        ? t("addTransfer")
+        : t("addExpense")
+  );
+  setText("quickTypeExpense", t("txTypeExpense"));
+  setText("quickTypeIncome", t("txTypeIncome"));
+  setText("quickTypeTransfer", t("txTypeTransfer"));
   setText("quickEntryDateLabel", t("date"));
   setText("quickStepL1Title", t("stepL1Title"));
   setText("quickStepL2Title", t("stepL2Title"));
@@ -1538,11 +1611,19 @@ function applyI18n() {
   setText("quickEntryL1Label", t("categoryL1"));
   setText("quickEntryL2Label", t("categoryL2"));
   setText("quickEntryAccountLabel", t("account"));
+  setText("quickEntryAccountToLabel", t("accountTo"));
   setText("quickEntryCurrencyLabel", t("currency"));
   setText("quickEntryAmountLabel", t("amount"));
   setText("quickEntryWheelLabel", t("amountWheel"));
   setText("quickEntryNoteLabel", t("note"));
-  setText("quickEntrySaveBtn", t("saveExpense"));
+  setText(
+    "quickEntrySaveBtn",
+    state.quickEntryType === "income"
+      ? t("saveIncome")
+      : state.quickEntryType === "transfer"
+        ? t("saveTransfer")
+        : t("saveExpense")
+  );
   setText("budgetSheetTitle", t("budgetEditor"));
   setText("quickBudgetMonthLabel", t("month"));
   setText("quickBudgetL1Label", t("categoryL1"));
