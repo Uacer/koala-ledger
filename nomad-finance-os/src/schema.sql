@@ -98,6 +98,7 @@ CREATE TABLE IF NOT EXISTS user_settings (
     user_id INTEGER PRIMARY KEY,
     base_currency TEXT NOT NULL DEFAULT 'USD',
     timezone TEXT NOT NULL DEFAULT 'UTC',
+    ui_language TEXT NOT NULL DEFAULT 'en',
     default_ai_provider_id INTEGER,
     created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
     updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,

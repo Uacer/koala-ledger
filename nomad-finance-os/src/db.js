@@ -14,6 +14,7 @@ function createDb(filename = ":memory:") {
 
 function runMigrations(db) {
   ensureColumn(db, "accounts", "opening_balance", "NUMERIC NOT NULL DEFAULT 0");
+  ensureColumn(db, "user_settings", "ui_language", "TEXT NOT NULL DEFAULT 'en'");
 }
 
 function ensureColumn(db, table, column, ddl) {
@@ -28,8 +29,8 @@ function ensureUserAndSeedDefaults(db, userId) {
   db.prepare("INSERT OR IGNORE INTO users (id) VALUES (?)").run(userId);
   db.prepare(
     `
-      INSERT OR IGNORE INTO user_settings (user_id, base_currency, timezone)
-      VALUES (?, 'USD', 'UTC')
+      INSERT OR IGNORE INTO user_settings (user_id, base_currency, timezone, ui_language)
+      VALUES (?, 'USD', 'UTC', 'en')
     `
   ).run(userId);
 

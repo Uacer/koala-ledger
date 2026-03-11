@@ -29,10 +29,45 @@ function extractJsonFromText(text) {
   return null;
 }
 
+function delay(ms) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+async function parseProviderError(response) {
+  let payload = null;
+  let rawText = "";
+  try {
+    rawText = await response.text();
+  } catch {
+    rawText = "";
+  }
+  if (rawText) {
+    try {
+      payload = JSON.parse(rawText);
+    } catch {
+      payload = null;
+    }
+  }
+  const message =
+    payload?.error?.message ||
+    payload?.message ||
+    (typeof payload?.error === "string" ? payload.error : "") ||
+    rawText ||
+    "";
+  const code = payload?.error?.code || payload?.code || payload?.error?.type || "";
+  const retryAfterHeader = response.headers?.get?.("retry-after");
+  const retryAfterSec = Number.parseInt(retryAfterHeader || "", 10);
+  return {
+    message: String(message || "").trim(),
+    code: String(code || "").trim(),
+    retryAfterSec: Number.isFinite(retryAfterSec) ? retryAfterSec : null
+  };
+}
+
 async function parseWithProvider(provider, { text, imageBase64 }, { categories, accounts }) {
   const apiKey = decryptText(provider.encrypted_api_key);
   const baseUrl = String(provider.base_url || "").replace(/\/$/, "");
-  const model = provider.model || "gpt-4.1-mini";
+  const model = provider.model || "gpt-4o-mini";
   const schemaHint = {
     type: "expense|income|transfer",
     date: "YYYY-MM-DD",
@@ -70,52 +105,70 @@ async function parseWithProvider(provider, { text, imageBase64 }, { categories, 
         ]
       : prompt;
 
-  const response = await fetch(`${baseUrl}/chat/completions`, {
-    method: "POST",
-    headers: {
-      "content-type": "application/json",
-      authorization: `Bearer ${apiKey}`
-    },
-    body: JSON.stringify({
-      model,
-      temperature: 0.1,
-      messages: [
-        { role: "system", content: "Return strict JSON object only." },
-        { role: "user", content: userContent }
-      ]
-    })
-  });
+  const maxRetries = 2;
+  for (let attempt = 0; attempt <= maxRetries; attempt += 1) {
+    const response = await fetch(`${baseUrl}/chat/completions`, {
+      method: "POST",
+      headers: {
+        "content-type": "application/json",
+        authorization: `Bearer ${apiKey}`
+      },
+      body: JSON.stringify({
+        model,
+        temperature: 0.1,
+        messages: [
+          { role: "system", content: "Return strict JSON object only." },
+          { role: "user", content: userContent }
+        ]
+      })
+    });
 
-  if (!response.ok) {
-    let detail = `Provider call failed (${response.status}).`;
-    try {
+    if (response.ok) {
       const payload = await response.json();
-      const message =
-        payload?.error?.message ||
-        payload?.message ||
-        (typeof payload?.error === "string" ? payload.error : "");
-      if (message) {
-        detail = `Provider call failed (${response.status}): ${String(message)}`;
+      const content = payload?.choices?.[0]?.message?.content || "";
+      const parsed = extractJsonFromText(content);
+      if (!parsed) {
+        throw new Error("Provider response is not valid JSON.");
       }
-    } catch {
-      try {
-        const text = await response.text();
-        if (text && String(text).trim()) {
-          detail = `Provider call failed (${response.status}): ${String(text).slice(0, 240)}`;
-        }
-      } catch {
-        // ignore body parse errors; keep status-only message
-      }
+      return parsed;
+    }
+
+    const providerError = await parseProviderError(response);
+    const code = providerError.code.toLowerCase();
+    const quotaExhausted =
+      response.status === 429 &&
+      (code.includes("insufficient_quota") ||
+        code.includes("billing_hard_limit_reached") ||
+        providerError.message.toLowerCase().includes("insufficient_quota"));
+    const retryableRateLimit = response.status === 429 && !quotaExhausted;
+
+    if (retryableRateLimit && attempt < maxRetries) {
+      const backoffMs = providerError.retryAfterSec
+        ? providerError.retryAfterSec * 1000
+        : 500 * 2 ** attempt + Math.floor(Math.random() * 250);
+      await delay(backoffMs);
+      continue;
+    }
+
+    if (quotaExhausted) {
+      throw new Error(
+        "Provider call failed (429): quota exhausted. Check OpenAI billing/project budget and retry."
+      );
+    }
+    if (retryableRateLimit) {
+      throw new Error(
+        "Provider call failed (429): rate limit exceeded. Please wait a few seconds and retry."
+      );
+    }
+
+    let detail = `Provider call failed (${response.status}).`;
+    if (providerError.message) {
+      detail = `Provider call failed (${response.status}): ${providerError.message.slice(0, 240)}`;
     }
     throw new Error(detail);
   }
-  const payload = await response.json();
-  const content = payload?.choices?.[0]?.message?.content || "";
-  const parsed = extractJsonFromText(content);
-  if (!parsed) {
-    throw new Error("Provider response is not valid JSON.");
-  }
-  return parsed;
+
+  throw new Error("Provider call failed (429): rate limit exceeded.");
 }
 
 async function buildExtractionDraft({

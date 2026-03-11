@@ -290,6 +290,41 @@ test("settings + auto FX conversion + runway/risk metrics", async () => {
   assert.ok("fixed_cost_ratio" in riskRes.body);
 });
 
+test("rejects unsupported currencies for settings and accounts", async () => {
+  const { api } = createHarness();
+  const settingsRes = await api.put("/api/v1/settings").send({
+    base_currency: "SGD"
+  });
+  assert.equal(settingsRes.status, 400);
+  assert.match(settingsRes.body.error, /base_currency must be one of/i);
+
+  const accountRes = await api.post("/api/v1/accounts").send({
+    name: "Bad Currency Account",
+    type: "cash",
+    currency: "GBP",
+    balance: 0
+  });
+  assert.equal(accountRes.status, 400);
+  assert.match(accountRes.body.error, /currency must be one of/i);
+});
+
+test("settings persists ui_language", async () => {
+  const { api } = createHarness();
+  const initial = await api.get("/api/v1/settings").send();
+  assert.equal(initial.status, 200);
+  assert.equal(initial.body.ui_language, "en");
+
+  const update = await api.put("/api/v1/settings").send({
+    ui_language: "zh"
+  });
+  assert.equal(update.status, 200);
+  assert.equal(update.body.ui_language, "zh");
+
+  const after = await api.get("/api/v1/settings").send();
+  assert.equal(after.status, 200);
+  assert.equal(after.body.ui_language, "zh");
+});
+
 test("BYOK provider CRUD + parse-text extraction + confirm flow", async () => {
   const { api } = createHarness();
   const date = "2026-03-10";

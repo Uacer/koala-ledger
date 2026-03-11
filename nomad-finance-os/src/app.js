@@ -41,7 +41,8 @@ function createApp(db) {
   app.put("/api/v1/settings", (req, res) => {
     const schema = z.object({
       base_currency: z.string().min(3).max(8).optional(),
-      timezone: z.string().min(2).max(100).optional()
+      timezone: z.string().min(2).max(100).optional(),
+      ui_language: z.enum(["en", "zh"]).optional()
     });
     const parsed = schema.safeParse(req.body);
     if (!parsed.success) {
@@ -49,17 +50,23 @@ function createApp(db) {
     }
     const payload = parsed.data;
     const current = getUserSettings(db, req.userId);
-    const baseCurrency = payload.base_currency
-      ? normalizeCurrency(payload.base_currency)
-      : current.base_currency;
+    let baseCurrency = current.base_currency;
+    if (payload.base_currency) {
+      try {
+        baseCurrency = normalizeSupportedCurrency(payload.base_currency, "base_currency");
+      } catch (error) {
+        return res.status(400).json({ error: String(error.message || "Invalid base_currency.") });
+      }
+    }
     const timezone = payload.timezone || current.timezone;
+    const uiLanguage = payload.ui_language || current.ui_language;
     db.prepare(
       `
         UPDATE user_settings
-        SET base_currency = ?, timezone = ?, updated_at = CURRENT_TIMESTAMP
+        SET base_currency = ?, timezone = ?, ui_language = ?, updated_at = CURRENT_TIMESTAMP
         WHERE user_id = ?
       `
-    ).run(baseCurrency, timezone, req.userId);
+    ).run(baseCurrency, timezone, uiLanguage, req.userId);
     res.json(getUserSettings(db, req.userId));
   });
 
@@ -68,8 +75,14 @@ function createApp(db) {
   });
 
   app.get("/api/v1/fx/quote", async (req, res) => {
-    const from = normalizeCurrency(req.query.from || "USD");
-    const to = normalizeCurrency(req.query.to || "USD");
+    let from;
+    let to;
+    try {
+      from = normalizeSupportedCurrency(req.query.from || "USD", "from");
+      to = normalizeSupportedCurrency(req.query.to || "USD", "to");
+    } catch (error) {
+      return res.status(400).json({ error: String(error.message || "Invalid currency.") });
+    }
     const fx = await fetchFxRate(from, to);
     res.json({
       from,
@@ -159,6 +172,12 @@ function createApp(db) {
       return res.status(400).json({ error: parsed.error.flatten() });
     }
     const payload = parsed.data;
+    let accountCurrency;
+    try {
+      accountCurrency = normalizeSupportedCurrency(payload.currency, "currency");
+    } catch (error) {
+      return res.status(400).json({ error: String(error.message || "Invalid currency.") });
+    }
     const result = db
       .prepare(
         `
@@ -170,7 +189,7 @@ function createApp(db) {
         req.userId,
         payload.name.trim(),
         payload.type,
-        normalizeCurrency(payload.currency),
+        accountCurrency,
         payload.balance,
         payload.balance
       );
@@ -574,7 +593,16 @@ function createApp(db) {
     if (!parsed.success) {
       return res.status(400).json({ error: parsed.error.flatten() });
     }
-    const enriched = await enrichDraftWithFx(db, req.userId, parsed.data);
+    let txInput = parsed.data;
+    try {
+      txInput = {
+        ...parsed.data,
+        currency_original: normalizeSupportedCurrency(parsed.data.currency_original, "currency_original")
+      };
+    } catch (error) {
+      return res.status(400).json({ error: String(error.message || "Invalid currency_original.") });
+    }
+    const enriched = await enrichDraftWithFx(db, req.userId, txInput);
     let tx;
     try {
       tx = createTransactionRecord(db, req.userId, enriched);
@@ -926,17 +954,19 @@ function createApp(db) {
 function getUserSettings(db, userId) {
   const row = db
     .prepare(
-      "SELECT user_id, base_currency, timezone, default_ai_provider_id FROM user_settings WHERE user_id = ?"
+      "SELECT user_id, base_currency, timezone, ui_language, default_ai_provider_id FROM user_settings WHERE user_id = ?"
     )
     .get(userId);
   if (!row) {
     ensureUserAndSeedDefaults(db, userId);
     return getUserSettings(db, userId);
   }
+  const normalizedBase = normalizeCurrency(row.base_currency || "USD");
   return {
     user_id: row.user_id,
-    base_currency: normalizeCurrency(row.base_currency || "USD"),
+    base_currency: SUPPORTED_CURRENCIES.includes(normalizedBase) ? normalizedBase : "USD",
     timezone: row.timezone || "UTC",
+    ui_language: row.ui_language === "zh" ? "zh" : "en",
     default_ai_provider_id: row.default_ai_provider_id || null
   };
 }
@@ -1094,6 +1124,7 @@ function createTransactionRecord(db, userId, payload) {
   if (!Number.isFinite(amountBase) || amountBase <= 0) {
     throw new Error("Invalid amount_base.");
   }
+  const sourceCurrency = normalizeSupportedCurrency(payload.currency_original, "currency_original");
 
   const from =
     payload.account_from_id !== undefined
@@ -1185,7 +1216,7 @@ function createTransactionRecord(db, userId, payload) {
       payload.date,
       type,
       amountOriginal,
-      normalizeCurrency(payload.currency_original),
+      sourceCurrency,
       fxRate,
       amountBase,
       type === "expense" ? payload.category_l1 : null,
@@ -1199,26 +1230,26 @@ function createTransactionRecord(db, userId, payload) {
     if (type === "expense") {
       const deltaFrom = convertCurrency(
         amountOriginal,
-        normalizeCurrency(payload.currency_original),
+        sourceCurrency,
         normalizeCurrency(from.currency)
       );
       updateBalance.run(-deltaFrom, from.id, userId);
     } else if (type === "income") {
       const deltaTo = convertCurrency(
         amountOriginal,
-        normalizeCurrency(payload.currency_original),
+        sourceCurrency,
         normalizeCurrency(to.currency)
       );
       updateBalance.run(deltaTo, to.id, userId);
     } else if (type === "transfer") {
       const deltaFrom = convertCurrency(
         amountOriginal,
-        normalizeCurrency(payload.currency_original),
+        sourceCurrency,
         normalizeCurrency(from.currency)
       );
       const deltaTo = convertCurrency(
         amountOriginal,
-        normalizeCurrency(payload.currency_original),
+        sourceCurrency,
         normalizeCurrency(to.currency)
       );
       updateBalance.run(-deltaFrom, from.id, userId);
@@ -1599,6 +1630,14 @@ function getTransactionWithTags(db, userId, txId) {
     amount_base: Number(row.amount_base),
     tags: row.tag_names ? row.tag_names.split("|") : []
   };
+}
+
+function normalizeSupportedCurrency(currency, fieldName = "currency") {
+  const normalized = normalizeCurrency(currency || "USD");
+  if (SUPPORTED_CURRENCIES.includes(normalized)) {
+    return normalized;
+  }
+  throw new Error(`${fieldName} must be one of: ${SUPPORTED_CURRENCIES.join(", ")}.`);
 }
 
 function convertCurrency(amount, fromCurrency, toCurrency) {

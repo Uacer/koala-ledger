@@ -20,7 +20,7 @@ const DEFAULT_EXPENSE_CATEGORIES = {
   Study: ["Courses", "Books", "Certification", "Workshops"]
 };
 
-const SUPPORTED_CURRENCIES = ["USD", "USDT", "THB", "RMB", "CNY", "SGD", "EUR", "GBP", "JPY"];
+const SUPPORTED_CURRENCIES = ["CNY", "EUR", "THB", "USD", "JPY", "KRW"];
 const FIXED_COST_L2 = new Set(["Rent", "Utilities", "Coworking", "SaaS"]);
 
 module.exports = {

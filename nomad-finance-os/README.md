@@ -12,6 +12,8 @@ Web-first MVP backend implementing:
 - BYOK AI providers (OpenAI-compatible endpoint) + parse text/image draft + confirm extraction
 - Capture parse is AI-only: an active default provider is required (no heuristic fallback)
 - FX quote endpoint and auto conversion to base currency
+- Fixed currency list for MVP: `CNY, EUR, THB, USD, JPY, KRW`
+- UI language setting: `en` / `zh` (persisted per user)
 - Product event tracking + analytics summary endpoint
 - Account balances tracked in each account's own currency, while dashboard metrics are unified into base currency
 - Dashboard/Review/Budget spent calculations are dynamically recomputed in current base currency from original transaction currency

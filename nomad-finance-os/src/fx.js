@@ -7,6 +7,7 @@ const FALLBACK_USD_RATES = {
   CNY: 7.2,
   SGD: 1.34,
   JPY: 148,
+  KRW: 1365,
   USDT: 1
 };
 
@@ -28,6 +29,10 @@ function normalizeCurrency(currency) {
     "欧元": "EUR",
     "英镑": "GBP",
     "日元": "JPY",
+    "韩元": "KRW",
+    "韓元": "KRW",
+    WON: "KRW",
+    "원": "KRW",
     "新币": "SGD",
     "新元": "SGD"
   };

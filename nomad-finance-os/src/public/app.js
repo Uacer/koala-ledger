@@ -7,10 +7,221 @@ const state = {
   providers: [],
   dashboard: null,
   risk: null,
+  quickEntryMax: 0,
   txTagFilter: "",
   latestExtractionId: null,
   latestExtractionDraft: null
 };
+
+const UI_CURRENCIES = new Set(["CNY", "EUR", "THB", "USD", "JPY", "KRW"]);
+const UI_LANGUAGES = new Set(["en", "zh"]);
+const CATEGORY_L1_EMOJI = {
+  Living: "🏠",
+  Travel: "✈️",
+  Work: "💼",
+  Investment: "📈",
+  Lifestyle: "✨",
+  Study: "📚"
+};
+const CATEGORY_L2_EMOJI = {
+  Rent: "🏡",
+  Utilities: "💡",
+  Groceries: "🛒",
+  Healthcare: "🩺",
+  Flights: "🛫",
+  Hotels: "🏨",
+  Visa: "🛂",
+  "Local Transport": "🛵",
+  SaaS: "🧰",
+  Coworking: "🏢",
+  Equipment: "🖥️",
+  Contractor: "🧑‍💻",
+  "Broker Fees": "💹",
+  "On-chain Fees": "⛓️",
+  Custody: "🔐",
+  Dining: "🍽️",
+  Entertainment: "🎬",
+  Shopping: "🛍️",
+  Fitness: "🏋️",
+  Courses: "🎓",
+  Books: "📖",
+  Certification: "📜",
+  Workshops: "🧪"
+};
+
+const I18N = {
+  en: {
+    subtitle: "A simpler daily money cockpit.",
+    month: "Month",
+    dashboard: "Dashboard",
+    cashFlowPulse: "Cash Flow Pulse",
+    liquiditySplit: "Liquidity Split",
+    runwaySignal: "Runway Signal",
+    riskMetrics: "Risk Metrics",
+    budgetStatus: "Budget Status (L1 only)",
+    netWorthComposition: "Net Worth Composition",
+    plannedBudget: "Planned Budget",
+    budgetPlanSummary: "Planned {planned} · Spent {spent} · Remaining {remaining}",
+    editBudget: "Edit Budget",
+    addExpense: "Add Expense",
+    close: "Close",
+    date: "Date",
+    stepL1Title: "Step 1 · Choose Category L1",
+    stepL2Title: "Step 2 · Choose Category L2",
+    stepSpendTitle: "Step 3 · Account & Currency",
+    stepAmountTitle: "Step 4 · Enter Amount",
+    categoryL1: "Category L1",
+    categoryL2: "Category L2",
+    account: "Account",
+    currency: "Currency",
+    amount: "Amount",
+    amountWheel: "Amount Wheel",
+    note: "Note",
+    saveExpense: "Save Expense",
+    budgetEditor: "Budget Editor",
+    totalAmount: "Total Amount",
+    saveBudget: "Save Budget",
+    settings: "Settings",
+    userId: "User ID",
+    language: "Language",
+    baseCurrency: "Base Currency",
+    timezone: "Timezone",
+    saveSettings: "Save Settings",
+    selectAccount: "Select account",
+    advancedBudget: "Advanced Budget",
+    accounts: "Accounts",
+    monthlyReview: "Monthly Review",
+    categories: "Categories",
+    aiProviders: "AI Providers",
+    backToDashboard: "Back to Dashboard",
+    metricNetWorth: "Net Worth",
+    metricLiquidCash: "Liquid Cash",
+    metricRestrictedCash: "Restricted Cash",
+    metricMonthlyIncome: "Monthly Income",
+    metricMonthlyExpense: "Monthly Expense",
+    metricNetCashFlow: "Net Cash Flow",
+    metricBurnRate: "Burn Rate",
+    metricRunwayMonths: "Runway (months)",
+    riskCryptoExposure: "Crypto Exposure",
+    riskIncomeVolatility: "Income Volatility",
+    riskFixedCostRatio: "Fixed Cost Ratio",
+    labelIncome: "Income",
+    labelExpense: "Expense",
+    labelBurn: "Burn",
+    labelNet: "Net",
+    labelLiquid: "Liquid",
+    labelRestricted: "Restricted",
+    labelTotal: "Total",
+    labelScale: "Scale",
+    emptyNoBudgetMonth: "No budget configured for this month.",
+    emptyNoTxMonth: "No transactions for this month.",
+    emptyNoMonthlyBudget: "No monthly budgets.",
+    emptyNoYearlyBudget: "No yearly budgets.",
+    emptyNoQuickBudget: "No budgets yet.",
+    remaining: "Remaining",
+    original: "original",
+    reason: "reason",
+    from: "from",
+    to: "to",
+    loadedUser: "Loaded user {id}",
+    settingsUpdated: "Settings updated",
+    budgetUpdated: "Budget updated",
+    expenseSaved: "Expense saved",
+    maxSpendHint: "max: {amount} {currency}",
+    amountExceeded: "Amount exceeds account available balance ({amount} {currency}).",
+    invalidAmount: "Please enter a valid amount.",
+    txTypeExpense: "EXPENSE",
+    txTypeIncome: "INCOME",
+    txTypeTransfer: "TRANSFER"
+  },
+  zh: {
+    subtitle: "更轻量的日常财务驾驶舱。",
+    month: "月份",
+    dashboard: "总览",
+    cashFlowPulse: "现金流脉冲",
+    liquiditySplit: "流动性结构",
+    runwaySignal: "Runway 信号",
+    riskMetrics: "风险指标",
+    budgetStatus: "预算进度（仅一级分类）",
+    netWorthComposition: "净资产结构",
+    plannedBudget: "预算计划",
+    budgetPlanSummary: "计划 {planned} · 已花 {spent} · 剩余 {remaining}",
+    editBudget: "编辑预算",
+    addExpense: "新增支出",
+    close: "关闭",
+    date: "日期",
+    stepL1Title: "第 1 步 · 选择一级分类",
+    stepL2Title: "第 2 步 · 选择二级分类",
+    stepSpendTitle: "第 3 步 · 选择账户与币种",
+    stepAmountTitle: "第 4 步 · 输入金额",
+    categoryL1: "一级分类",
+    categoryL2: "二级分类",
+    account: "账户",
+    currency: "币种",
+    amount: "金额",
+    amountWheel: "金额滚轮",
+    note: "备注",
+    saveExpense: "保存支出",
+    budgetEditor: "预算编辑",
+    totalAmount: "预算总额",
+    saveBudget: "保存预算",
+    settings: "设置",
+    userId: "用户 ID",
+    language: "语言",
+    baseCurrency: "基准货币",
+    timezone: "时区",
+    saveSettings: "保存设置",
+    selectAccount: "选择账户",
+    advancedBudget: "高级预算",
+    accounts: "账户管理",
+    monthlyReview: "月度回顾",
+    categories: "分类管理",
+    aiProviders: "AI 提供商",
+    backToDashboard: "返回总览",
+    metricNetWorth: "净资产",
+    metricLiquidCash: "流动现金",
+    metricRestrictedCash: "受限现金",
+    metricMonthlyIncome: "月收入",
+    metricMonthlyExpense: "月支出",
+    metricNetCashFlow: "净现金流",
+    metricBurnRate: "燃烧率",
+    metricRunwayMonths: "可持续月数",
+    riskCryptoExposure: "加密资产敞口",
+    riskIncomeVolatility: "收入波动率",
+    riskFixedCostRatio: "固定成本占比",
+    labelIncome: "收入",
+    labelExpense: "支出",
+    labelBurn: "燃烧",
+    labelNet: "净额",
+    labelLiquid: "流动",
+    labelRestricted: "受限",
+    labelTotal: "合计",
+    labelScale: "刻度",
+    emptyNoBudgetMonth: "本月还没有预算。",
+    emptyNoTxMonth: "本月暂无交易记录。",
+    emptyNoMonthlyBudget: "暂无月度预算。",
+    emptyNoYearlyBudget: "暂无年度预算。",
+    emptyNoQuickBudget: "还没有预算数据。",
+    remaining: "剩余",
+    original: "原始",
+    reason: "原因",
+    from: "转出",
+    to: "转入",
+    loadedUser: "已加载用户 {id}",
+    settingsUpdated: "设置已更新",
+    budgetUpdated: "预算已更新",
+    expenseSaved: "支出已保存",
+    maxSpendHint: "上限：{amount} {currency}",
+    amountExceeded: "金额超过账户可用余额（{amount} {currency}）。",
+    invalidAmount: "请输入有效金额。",
+    txTypeExpense: "支出",
+    txTypeIncome: "收入",
+    txTypeTransfer: "转账"
+  }
+};
+
+const FX_QUOTE_CACHE = new Map();
+let quickEntryLimitReqSeq = 0;
 
 const $ = (selector) => document.querySelector(selector);
 
@@ -18,6 +229,7 @@ document.addEventListener("DOMContentLoaded", () => {
   state.month = new Date().toISOString().slice(0, 7);
   $("#monthInput").value = state.month;
   bindUI();
+  initializeQuickEntryDefaults();
   loadAll();
 });
 
@@ -47,6 +259,40 @@ function bindUI() {
   $("#generateReviewBtn").addEventListener("click", generateMonthlyReview);
   $("#transactionForm [name=type]").addEventListener("change", handleTxTypeChange);
   $("#transactionForm [name=category_l1]").addEventListener("change", populateL2Select);
+  $("#openQuickAddBtn").addEventListener("click", () => openSheet("quickEntrySheet"));
+  $("#openSettingsBtn").addEventListener("click", () => openSheet("settingsSheet"));
+  $("#openBudgetSheetBtn").addEventListener("click", () => {
+    const monthInput = $("#quickBudgetForm [name=month]");
+    if (monthInput) monthInput.value = state.month;
+    openSheet("budgetSheet");
+  });
+  $("#quickEntryForm").addEventListener("submit", submitQuickEntryForm);
+  $("#quickEntryForm [name=category_l1]").addEventListener("change", () => {
+    populateQuickEntryL2();
+  });
+  $("#quickEntryForm [name=category_l2]").addEventListener("change", () => {
+    void updateQuickEntryFlow();
+  });
+  $("#quickEntryForm [name=account_from_id]").addEventListener("change", () => {
+    void updateQuickEntryFlow();
+  });
+  $("#quickEntryForm [name=currency_original]").addEventListener("change", () => {
+    void updateQuickEntryFlow();
+  });
+  $("#quickBudgetForm").addEventListener("submit", submitQuickBudgetForm);
+  $("#quickSettingsForm").addEventListener("submit", submitQuickSettingsForm);
+  $("#closeUtilityBtn").addEventListener("click", closeUtilityPanel);
+  for (const closer of document.querySelectorAll("[data-close-sheet]")) {
+    closer.addEventListener("click", () => closeSheet(String(closer.getAttribute("data-close-sheet"))));
+  }
+  for (const btn of document.querySelectorAll("[data-open-panel]")) {
+    btn.addEventListener("click", () => {
+      const target = String(btn.getAttribute("data-open-panel") || "");
+      if (!target) return;
+      openUtilityPanel(target);
+    });
+  }
+  setupQuickAmountWheel();
 
   const txDate = $("#transactionForm [name=date]");
   txDate.value = new Date().toISOString().slice(0, 10);
@@ -81,6 +327,14 @@ function bindUI() {
   });
 }
 
+function initializeQuickEntryDefaults() {
+  const today = new Date().toISOString().slice(0, 10);
+  const dateInput = $("#quickEntryForm [name=date]");
+  if (dateInput) dateInput.value = today;
+  const budgetMonth = $("#quickBudgetForm [name=month]");
+  if (budgetMonth) budgetMonth.value = state.month;
+}
+
 function switchPanel(id) {
   for (const tab of document.querySelectorAll(".tab")) {
     tab.classList.toggle("active", tab.dataset.panel === id);
@@ -88,6 +342,69 @@ function switchPanel(id) {
   for (const panel of document.querySelectorAll(".panel")) {
     panel.classList.toggle("active", panel.id === id);
   }
+}
+
+function openSheet(id) {
+  closeUtilityPanel();
+  const node = document.getElementById(id);
+  if (!node) return;
+  if (id === "quickEntrySheet") {
+    const dateInput = $("#quickEntryForm [name=date]");
+    if (dateInput && !dateInput.value) dateInput.value = new Date().toISOString().slice(0, 10);
+    const currencyInput = $("#quickEntryForm [name=currency_original]");
+    if (currencyInput && state.settings?.base_currency) {
+      currencyInput.value = ensureUICurrency(state.settings.base_currency);
+    }
+    void updateQuickEntryFlow();
+  }
+  if (id === "budgetSheet") {
+    const monthInput = $("#quickBudgetForm [name=month]");
+    if (monthInput) monthInput.value = state.month;
+  }
+  if (id === "settingsSheet") {
+    $("#quickSettingsForm [name=user_id]").value = String(state.userId);
+    $("#quickSettingsForm [name=ui_language]").value = ensureUILanguage(state.settings?.ui_language || "en");
+  }
+  node.classList.remove("hidden");
+  node.setAttribute("aria-hidden", "false");
+}
+
+function closeSheet(id) {
+  const node = document.getElementById(id);
+  if (!node) return;
+  node.classList.add("hidden");
+  node.setAttribute("aria-hidden", "true");
+}
+
+function closeAllSheets() {
+  for (const sheet of document.querySelectorAll(".sheet")) {
+    sheet.classList.add("hidden");
+    sheet.setAttribute("aria-hidden", "true");
+  }
+}
+
+function openUtilityPanel(panelId) {
+  closeAllSheets();
+  const panel = document.getElementById(panelId);
+  if (!panel) return;
+  document.body.classList.add("utility-mode");
+  for (const p of document.querySelectorAll(".panel")) {
+    p.classList.remove("utility-open");
+    p.classList.toggle("active", p.id === "dashboardPanel");
+  }
+  panel.classList.add("utility-open");
+  panel.classList.add("active");
+  $("#closeUtilityBtn").classList.remove("hidden");
+}
+
+function closeUtilityPanel() {
+  document.body.classList.remove("utility-mode");
+  for (const panel of document.querySelectorAll(".panel")) {
+    panel.classList.remove("utility-open");
+    panel.classList.toggle("active", panel.id === "dashboardPanel");
+  }
+  const closeBtn = $("#closeUtilityBtn");
+  if (closeBtn) closeBtn.classList.add("hidden");
 }
 
 function syncControlState() {
@@ -157,7 +474,7 @@ async function loadAll() {
       loadReview(),
       loadRisk()
     ]);
-    showToast(`Loaded user ${state.userId}`);
+    showToast(t("loadedUser", { id: String(state.userId) }));
   } catch (error) {
     showToast(error.message, true);
   }
@@ -167,22 +484,36 @@ async function loadSettings() {
   state.settings = (await api("/api/v1/settings")) || {
     base_currency: "USD",
     timezone: "UTC",
+    ui_language: "en",
     default_ai_provider_id: null
   };
-  $("#settingsForm [name=base_currency]").value = state.settings.base_currency || "USD";
+  const uiLanguage = ensureUILanguage(state.settings.ui_language || "en");
+  state.settings.ui_language = uiLanguage;
+  const uiBase = ensureUICurrency(state.settings.base_currency || "USD");
+  $("#settingsForm [name=ui_language]").value = uiLanguage;
+  $("#settingsForm [name=base_currency]").value = uiBase;
   $("#settingsForm [name=timezone]").value = state.settings.timezone || "UTC";
+  $("#quickSettingsForm [name=ui_language]").value = uiLanguage;
+  $("#quickSettingsForm [name=base_currency]").value = uiBase;
+  $("#quickSettingsForm [name=timezone]").value = state.settings.timezone || "UTC";
+  $("#quickSettingsForm [name=user_id]").value = String(state.userId);
+  $("#quickEntryForm [name=currency_original]").value = uiBase;
+  applyI18n();
 }
 
 async function loadCategories() {
   state.categories = (await api("/api/v1/categories")) || {};
   renderCategoryTree();
   populateL1Selects();
+  populateQuickEntryL1();
+  populateQuickBudgetL1();
 }
 
 async function loadAccounts() {
   state.accounts = (await api("/api/v1/accounts")) || [];
   renderAccounts();
   populateAccountSelects();
+  populateQuickEntryAccounts();
 }
 
 async function loadProviders() {
@@ -203,7 +534,7 @@ function populateL1Selects() {
   for (const select of selects) {
     select.innerHTML = "";
     for (const name of activeL1) {
-      select.appendChild(new Option(name, name));
+      select.appendChild(new Option(withL1Emoji(name), name));
     }
   }
   populateL2Select();
@@ -216,7 +547,7 @@ function populateL2Select() {
   const rows = state.categories?.[l1]?.l2 || [];
   for (const row of rows) {
     if (!row.active) continue;
-    target.appendChild(new Option(row.name, row.name));
+    target.appendChild(new Option(withL2Emoji(row.name), row.name));
   }
 }
 
@@ -230,6 +561,185 @@ function populateAccountSelects() {
       select.appendChild(new Option(label, String(account.id)));
     }
   }
+}
+
+function populateQuickEntryL1() {
+  const select = $("#quickEntryForm [name=category_l1]");
+  if (!select) return;
+  const activeL1 = Object.entries(state.categories || {})
+    .filter(([, cfg]) => cfg.active)
+    .map(([name]) => name);
+  select.innerHTML = "";
+  for (const name of activeL1) {
+    select.appendChild(new Option(withL1Emoji(name), name));
+  }
+  populateQuickEntryL2();
+}
+
+function populateQuickEntryL2() {
+  const l1Select = $("#quickEntryForm [name=category_l1]");
+  const l2Select = $("#quickEntryForm [name=category_l2]");
+  if (!l1Select || !l2Select) return;
+  const l1 = l1Select.value;
+  const rows = state.categories?.[l1]?.l2 || [];
+  l2Select.innerHTML = "";
+  for (const row of rows) {
+    if (!row.active) continue;
+    l2Select.appendChild(new Option(withL2Emoji(row.name), row.name));
+  }
+  void updateQuickEntryFlow();
+}
+
+function populateQuickEntryAccounts() {
+  const select = $("#quickEntryForm [name=account_from_id]");
+  if (!select) return;
+  select.innerHTML = `<option value="">-- ${escapeHtml(t("selectAccount"))} --</option>`;
+  for (const account of state.accounts || []) {
+    const label = `${account.name} · ${account.type} · ${formatMoney(account.balance)} ${account.currency}`;
+    select.appendChild(new Option(label, String(account.id)));
+  }
+  void updateQuickEntryFlow();
+}
+
+function populateQuickBudgetL1() {
+  const select = $("#quickBudgetForm [name=category_l1]");
+  if (!select) return;
+  const activeL1 = Object.entries(state.categories || {})
+    .filter(([, cfg]) => cfg.active)
+    .map(([name]) => name);
+  select.innerHTML = "";
+  for (const name of activeL1) {
+    select.appendChild(new Option(withL1Emoji(name), name));
+  }
+}
+
+function setupQuickAmountWheel() {
+  const wheel = $("#quickAmountWheel");
+  const amountInput = $("#quickEntryForm [name=amount_original]");
+  const amountDisplay = $("#quickAmountDisplay");
+  if (!wheel || !amountInput || !amountDisplay) return;
+  let lastVibeAt = 0;
+  wheel.addEventListener("input", () => {
+    const numeric = clampQuickAmount(wheel.value);
+    amountInput.value = String(numeric);
+    syncQuickAmountDisplay(numeric);
+    validateQuickEntryAmount();
+    const now = Date.now();
+    if (navigator.vibrate && now - lastVibeAt > 24) {
+      navigator.vibrate(8);
+      lastVibeAt = now;
+    }
+  });
+  amountInput.addEventListener("input", () => {
+    const numeric = clampQuickAmount(amountInput.value);
+    amountInput.value = String(numeric);
+    wheel.value = String(Math.round(numeric));
+    syncQuickAmountDisplay(numeric);
+    validateQuickEntryAmount();
+  });
+  syncQuickAmountDisplay(amountInput.value || 0);
+}
+
+async function updateQuickEntryFlow() {
+  const l1 = $("#quickEntryForm [name=category_l1]")?.value || "";
+  const l2 = $("#quickEntryForm [name=category_l2]")?.value || "";
+  const accountId = parseOptionalInt($("#quickEntryForm [name=account_from_id]")?.value);
+  const currency = ensureUICurrency($("#quickEntryForm [name=currency_original]")?.value || "USD");
+
+  toggleQuickStep("quickStepL2", Boolean(l1));
+  toggleQuickStep("quickStepSpend", Boolean(l1 && l2));
+  const amountStepVisible = Boolean(l1 && l2 && accountId && currency);
+  toggleQuickStep("quickStepAmount", amountStepVisible);
+
+  if (!amountStepVisible) {
+    applyQuickEntryMax(0, currency);
+    validateQuickEntryAmount();
+    return;
+  }
+  await refreshQuickEntryAmountLimit(accountId, currency);
+}
+
+function toggleQuickStep(id, visible) {
+  const node = document.getElementById(id);
+  if (!node) return;
+  node.classList.toggle("hidden", !visible);
+}
+
+async function refreshQuickEntryAmountLimit(accountId, currency) {
+  const currentSeq = ++quickEntryLimitReqSeq;
+  const account = (state.accounts || []).find((x) => x.id === accountId);
+  if (!account) {
+    applyQuickEntryMax(0, currency);
+    return;
+  }
+
+  let max = Number(account.balance || 0);
+  try {
+    const from = String(account.currency || "USD").toUpperCase();
+    const to = ensureUICurrency(currency || "USD");
+    if (from !== to) {
+      const rate = await getFxRateCached(from, to);
+      max = max * rate;
+    }
+  } catch {
+    // keep local balance if quote fails
+  }
+  if (currentSeq !== quickEntryLimitReqSeq) return;
+  applyQuickEntryMax(Math.max(0, Number(max.toFixed(2))), currency);
+}
+
+async function getFxRateCached(from, to) {
+  if (from === to) return 1;
+  const key = `${from}->${to}`;
+  if (FX_QUOTE_CACHE.has(key)) return FX_QUOTE_CACHE.get(key);
+  const quote = await api(`/api/v1/fx/quote?from=${encodeURIComponent(from)}&to=${encodeURIComponent(to)}`);
+  const rate = Number(quote?.rate || 1);
+  const safeRate = Number.isFinite(rate) && rate > 0 ? rate : 1;
+  FX_QUOTE_CACHE.set(key, safeRate);
+  return safeRate;
+}
+
+function applyQuickEntryMax(maxAmount, currency) {
+  const amountInput = $("#quickEntryForm [name=amount_original]");
+  const wheel = $("#quickAmountWheel");
+  const hint = $("#quickAmountHint");
+  if (!amountInput || !wheel || !hint) return;
+
+  state.quickEntryMax = Number.isFinite(Number(maxAmount)) ? Math.max(0, Number(maxAmount)) : 0;
+  amountInput.max = String(state.quickEntryMax);
+  wheel.max = String(Math.max(1, Math.floor(state.quickEntryMax)));
+  wheel.disabled = state.quickEntryMax <= 0;
+
+  const current = clampQuickAmount(amountInput.value);
+  amountInput.value = String(current);
+  wheel.value = String(Math.min(Number(wheel.max), Math.floor(current)));
+  syncQuickAmountDisplay(current);
+  hint.textContent = t("maxSpendHint", {
+    amount: formatMoney(state.quickEntryMax),
+    currency: ensureUICurrency(currency || "USD")
+  });
+}
+
+function clampQuickAmount(value) {
+  const raw = Number(value || 0);
+  const max = Math.max(0, Number(state.quickEntryMax || 0));
+  if (!Number.isFinite(raw)) return 0;
+  return Number(Math.min(Math.max(0, raw), max).toFixed(2));
+}
+
+function syncQuickAmountDisplay(value) {
+  const amountDisplay = $("#quickAmountDisplay");
+  if (!amountDisplay) return;
+  amountDisplay.textContent = formatMoney(value);
+}
+
+function validateQuickEntryAmount() {
+  const amountInput = $("#quickEntryForm [name=amount_original]");
+  const saveBtn = $("#quickEntrySaveBtn");
+  if (!amountInput || !saveBtn) return;
+  const amount = Number(amountInput.value || 0);
+  const valid = Number.isFinite(amount) && amount > 0 && amount <= Number(state.quickEntryMax || 0);
+  saveBtn.disabled = !valid;
 }
 
 function handleTxTypeChange() {
@@ -318,6 +828,50 @@ async function submitTransactionForm(event) {
   }
 }
 
+async function submitQuickEntryForm(event) {
+  event.preventDefault();
+  const fd = new FormData(event.currentTarget);
+  const requestedAmount = Number(fd.get("amount_original"));
+  const currencyCode = ensureUICurrency(String(fd.get("currency_original") || "USD").toUpperCase());
+  if (!Number.isFinite(requestedAmount) || requestedAmount <= 0) {
+    showToast(t("invalidAmount"), true);
+    return;
+  }
+  if (requestedAmount > Number(state.quickEntryMax || 0)) {
+    showToast(
+      t("amountExceeded", { amount: formatMoney(state.quickEntryMax), currency: currencyCode }),
+      true
+    );
+    return;
+  }
+  const payload = {
+    date: fd.get("date"),
+    type: "expense",
+    amount_original: requestedAmount,
+    currency_original: currencyCode,
+    category_l1: fd.get("category_l1"),
+    category_l2: fd.get("category_l2"),
+    account_from_id: parseOptionalInt(fd.get("account_from_id")),
+    note: fd.get("note") || "",
+    tags: []
+  };
+  try {
+    await api("/api/v1/transactions", { method: "POST", body: JSON.stringify(payload) });
+    showToast(t("expenseSaved"));
+    closeSheet("quickEntrySheet");
+    const amountInput = $("#quickEntryForm [name=amount_original]");
+    if (amountInput) amountInput.value = "0";
+    const wheel = $("#quickAmountWheel");
+    if (wheel) wheel.value = "0";
+    const display = $("#quickAmountDisplay");
+    if (display) display.textContent = "0.00";
+    validateQuickEntryAmount();
+    await refreshAfterLedgerChange();
+  } catch (error) {
+    showToast(error.message, true);
+  }
+}
+
 async function submitBudgetForm(event) {
   event.preventDefault();
   const fd = new FormData(event.currentTarget);
@@ -331,6 +885,25 @@ async function submitBudgetForm(event) {
       })
     });
     showToast("Monthly budget saved");
+    await Promise.all([loadBudgets(), loadDashboard()]);
+  } catch (error) {
+    showToast(error.message, true);
+  }
+}
+
+async function submitQuickBudgetForm(event) {
+  event.preventDefault();
+  const fd = new FormData(event.currentTarget);
+  try {
+    await api("/api/v1/budgets", {
+      method: "POST",
+      body: JSON.stringify({
+        month: fd.get("month"),
+        category_l1: fd.get("category_l1"),
+        total_amount: Number(fd.get("total_amount"))
+      })
+    });
+    showToast(t("budgetUpdated"));
     await Promise.all([loadBudgets(), loadDashboard()]);
   } catch (error) {
     showToast(error.message, true);
@@ -399,11 +972,35 @@ async function submitSettingsForm(event) {
       method: "PUT",
       body: JSON.stringify({
         base_currency: String(fd.get("base_currency")).toUpperCase(),
-        timezone: fd.get("timezone")
+        timezone: fd.get("timezone"),
+        ui_language: ensureUILanguage(fd.get("ui_language"))
       })
     });
-    showToast("Settings updated");
+    showToast(t("settingsUpdated"));
     await Promise.all([loadSettings(), loadDashboard()]);
+  } catch (error) {
+    showToast(error.message, true);
+  }
+}
+
+async function submitQuickSettingsForm(event) {
+  event.preventDefault();
+  const fd = new FormData(event.currentTarget);
+  const nextUserId = Math.max(1, Number(fd.get("user_id") || 1));
+  $("#userIdInput").value = String(nextUserId);
+  state.userId = nextUserId;
+  try {
+    await api("/api/v1/settings", {
+      method: "PUT",
+      body: JSON.stringify({
+        base_currency: String(fd.get("base_currency") || "USD").toUpperCase(),
+        timezone: fd.get("timezone") || "UTC",
+        ui_language: ensureUILanguage(fd.get("ui_language"))
+      })
+    });
+    showToast(t("settingsUpdated"));
+    closeSheet("settingsSheet");
+    await loadAll();
   } catch (error) {
     showToast(error.message, true);
   }
@@ -509,26 +1106,7 @@ async function generateMonthlyReview() {
 async function loadDashboard() {
   const dashboard = await api(`/api/v1/dashboard?month=${state.month}`);
   state.dashboard = dashboard;
-  const baseCurrency = dashboard.base_currency || state.settings?.base_currency || "USD";
-  const pairs = [
-    [`Net Worth (${baseCurrency})`, dashboard.net_worth],
-    [`Liquid Cash (${baseCurrency})`, dashboard.liquid_cash],
-    [`Restricted Cash (${baseCurrency})`, dashboard.restricted_cash_total],
-    [`Monthly Income (${baseCurrency})`, dashboard.monthly_income],
-    [`Monthly Expense (${baseCurrency})`, dashboard.monthly_expense],
-    [`Net Cash Flow (${baseCurrency})`, dashboard.net_cash_flow],
-    [`Burn Rate (${baseCurrency})`, dashboard.burn_rate],
-    ["Runway (months)", dashboard.runway_months ?? "Infinity"]
-  ];
-  $("#metricsGrid").innerHTML = pairs
-    .map(
-      ([label, value]) => `
-      <article class="metric">
-        <div class="label">${label}</div>
-        <div class="value">${typeof value === "number" ? formatMoney(value) : value}</div>
-      </article>`
-    )
-    .join("");
+  renderHeroSummary(dashboard);
   renderInfographics(dashboard);
   renderBudgetStatus(dashboard.budget_status || []);
 }
@@ -541,22 +1119,21 @@ async function loadRisk() {
   };
   state.risk = risk;
   $("#riskMetrics").innerHTML = `
-    <article class="list-row"><div class="row-main"><strong>Crypto Exposure</strong><span>${
+    <article class="list-row"><div class="row-main"><strong>${t("riskCryptoExposure")}</strong><span>${
       (risk.crypto_exposure * 100).toFixed(2)
     }%</span></div></article>
-    <article class="list-row"><div class="row-main"><strong>Income Volatility</strong><span>${
+    <article class="list-row"><div class="row-main"><strong>${t("riskIncomeVolatility")}</strong><span>${
       (risk.income_volatility * 100).toFixed(2)
     }%</span></div></article>
-    <article class="list-row"><div class="row-main"><strong>Fixed Cost Ratio</strong><span>${
+    <article class="list-row"><div class="row-main"><strong>${t("riskFixedCostRatio")}</strong><span>${
       (risk.fixed_cost_ratio * 100).toFixed(2)
     }%</span></div></article>
   `;
 }
 
 function renderInfographics(dashboard) {
+  renderPlannedBudgetCard(dashboard);
   renderCashFlowBars(dashboard);
-  renderLiquiditySplit(dashboard);
-  renderRunwaySignal(dashboard);
 }
 
 function renderCashFlowBars(dashboard) {
@@ -564,11 +1141,10 @@ function renderCashFlowBars(dashboard) {
   if (!target) return;
   const base = dashboard.base_currency || state.settings?.base_currency || "USD";
   const rows = [
-    { label: "Income", value: Number(dashboard.monthly_income || 0), tone: "income" },
-    { label: "Expense", value: Number(dashboard.monthly_expense || 0), tone: "expense" },
-    { label: "Burn", value: Number(dashboard.burn_rate || 0), tone: "burn" },
+    { label: t("labelIncome"), value: Number(dashboard.monthly_income || 0), tone: "income" },
+    { label: t("labelExpense"), value: Number(dashboard.monthly_expense || 0), tone: "expense" },
     {
-      label: "Net",
+      label: t("labelNet"),
       value: Number(dashboard.net_cash_flow || 0),
       tone: Number(dashboard.net_cash_flow || 0) >= 0 ? "net" : "expense"
     }
@@ -588,53 +1164,78 @@ function renderCashFlowBars(dashboard) {
     .join("");
 }
 
-function renderLiquiditySplit(dashboard) {
-  const ring = $("#liquidityRing");
-  const legend = $("#liquidityLegend");
-  if (!ring || !legend) return;
+function renderHeroSummary(dashboard) {
   const base = dashboard.base_currency || state.settings?.base_currency || "USD";
+  const netWorth = Number(dashboard.net_worth || 0);
   const liquid = Math.max(0, Number(dashboard.liquid_cash || 0));
   const restricted = Math.max(0, Number(dashboard.restricted_cash_total || 0));
-  const total = liquid + restricted;
-  const liquidPct = total > 0 ? (liquid / total) * 100 : 0;
-  const deg = Math.max(0, Math.min(360, liquidPct * 3.6));
-  ring.style.background = `conic-gradient(#4de2b7 0deg, #4de2b7 ${deg}deg, #6aa7ff ${deg}deg, #6aa7ff 360deg)`;
-  ring.innerHTML = `<span class="ring-center">${liquidPct.toFixed(0)}% liquid</span>`;
-  legend.innerHTML = `
-    <div class="compact-row"><span><span class="dot liquid"></span>Liquid</span><strong>${formatMoney(liquid)} ${base}</strong></div>
-    <div class="compact-row"><span><span class="dot restricted"></span>Restricted</span><strong>${formatMoney(restricted)} ${base}</strong></div>
-    <div class="compact-row"><span>Total</span><strong>${formatMoney(total)} ${base}</strong></div>
+  const compositionBase = Math.max(0.01, liquid + restricted);
+  const liquidPct = Math.max(0, Math.min(100, (liquid / compositionBase) * 100));
+  const restrictedPct = Math.max(0, Math.min(100, 100 - liquidPct));
+  const runway = dashboard.runway_months;
+  const runwayLabel = Number.isFinite(Number(runway)) ? `${Number(runway).toFixed(1)}m` : "∞";
+
+  setText("heroNetWorthValue", `${formatMoney(netWorth)} ${base}`);
+  setText("heroLiquidCashValue", `${formatMoney(liquid)} ${base}`);
+  const liquidPart = $("#heroLiquidPart");
+  const restrictedPart = $("#heroRestrictedPart");
+  if (liquidPart) liquidPart.style.width = `${liquidPct}%`;
+  if (restrictedPart) restrictedPart.style.width = `${restrictedPct}%`;
+
+  $("#heroSubMetrics").innerHTML = `
+    <div class="hero-subcard"><div class="k">${t("metricMonthlyIncome")}</div><div class="v">${formatMoney(dashboard.monthly_income)} ${base}</div></div>
+    <div class="hero-subcard"><div class="k">${t("metricMonthlyExpense")}</div><div class="v">${formatMoney(dashboard.monthly_expense)} ${base}</div></div>
+    <div class="hero-subcard"><div class="k">${t("metricNetCashFlow")}</div><div class="v">${formatSignedMoney(dashboard.net_cash_flow)} ${base}</div></div>
+    <div class="hero-subcard secondary"><div class="k">${t("metricRunwayMonths")}</div><div class="v">${runwayLabel}</div></div>
   `;
 }
 
-function renderRunwaySignal(dashboard) {
-  const target = $("#runwayGauge");
-  if (!target) return;
-  const raw = dashboard.runway_months;
-  const runway = typeof raw === "number" ? raw : Number(raw);
-  const finite = Number.isFinite(runway);
-  const cap = 24;
-  const pct = finite ? Math.max(0, Math.min(100, (runway / cap) * 100)) : 100;
-  const fillColor = !finite
-    ? "linear-gradient(90deg, #4de2b7, #89ffde)"
-    : runway < 6
-      ? "linear-gradient(90deg, #ff5d7a, #ff8b9e)"
-      : runway < 12
-        ? "linear-gradient(90deg, #f8c36e, #ffd99a)"
-        : "linear-gradient(90deg, #4de2b7, #89ffde)";
-  target.innerHTML = `
-    <div class="runway-track"><div class="runway-fill" style="width:${pct}%;background:${fillColor};"></div></div>
-    <div class="runway-meta">
-      <span>${finite ? `${runway.toFixed(1)} months` : "Infinity"}</span>
-      <span>Scale: 0-${cap}m</span>
-    </div>
-  `;
+function renderPlannedBudgetCard(dashboard) {
+  const rows = dashboard.budget_status || [];
+  const summary = $("#budgetPlanSummary");
+  const list = $("#budgetPlanList");
+  if (!summary || !list) return;
+  if (!rows.length) {
+    summary.textContent = t("emptyNoBudgetMonth");
+    list.innerHTML = "";
+    return;
+  }
+  const planned = rows.reduce((sum, row) => sum + Number(row.total_amount || 0), 0);
+  const spent = rows.reduce((sum, row) => sum + Number(row.spent_amount || 0), 0);
+  const remaining = planned - spent;
+  const base = dashboard.base_currency || state.settings?.base_currency || "USD";
+  summary.classList.add("budget-plan-summary");
+  summary.textContent = t("budgetPlanSummary", {
+    planned: `${formatMoney(planned)} ${base}`,
+    spent: `${formatMoney(spent)} ${base}`,
+    remaining: `${formatMoney(remaining)} ${base}`
+  });
+
+  const topRows = [...rows]
+    .sort((a, b) => Number(b.spent_amount || 0) - Number(a.spent_amount || 0))
+    .slice(0, 4);
+  list.innerHTML = topRows
+    .map((row) => {
+      const total = Number(row.total_amount || 0);
+      const used = Number(row.spent_amount || 0);
+      const pct = total > 0 ? Math.min(100, (used / total) * 100) : 0;
+      return `
+        <article class="budget-plan-row">
+          <div class="top">
+            <strong>${escapeHtml(withL1Emoji(row.category_l1))}</strong>
+            <span class="${row.overspend ? "overspend" : "muted"}">${formatMoney(used)} / ${formatMoney(total)}</span>
+          </div>
+          <div class="progress-wrap"><div class="progress-fill" style="width:${pct}%"></div></div>
+        </article>
+      `;
+    })
+    .join("");
 }
 
 function renderBudgetStatus(rows) {
   const target = $("#budgetStatusList");
   if (!rows.length) {
-    target.innerHTML = '<div class="list-row muted">No budget configured for this month.</div>';
+    target.innerHTML = `<div class="list-row muted">${escapeHtml(t("emptyNoBudgetMonth"))}</div>`;
     return;
   }
   target.innerHTML = rows
@@ -645,7 +1246,7 @@ function renderBudgetStatus(rows) {
       return `
         <article class="list-row">
           <div class="row-main">
-            <strong>${escapeHtml(row.category_l1)}</strong>
+            <strong>${escapeHtml(withL1Emoji(row.category_l1))}</strong>
             <span class="${row.overspend ? "overspend" : "muted"}">${formatMoney(spent)} / ${formatMoney(total)}</span>
           </div>
           <div class="progress-wrap"><div class="progress-fill" style="width:${pct}%"></div></div>
@@ -712,7 +1313,7 @@ async function loadTransactions() {
   const rows = await api(path);
   const target = $("#transactionList");
   if (!rows.length) {
-    target.innerHTML = '<div class="list-row muted">No transactions for this month.</div>';
+    target.innerHTML = `<div class="list-row muted">${escapeHtml(t("emptyNoTxMonth"))}</div>`;
     return;
   }
   target.innerHTML = rows
@@ -726,18 +1327,18 @@ async function loadTransactions() {
       return `
         <article class="list-row">
           <div class="row-main">
-            <strong>${row.type.toUpperCase()} · ${formatMoney(row.amount_base)} ${
+            <strong>${txTypeLabel(row.type)} · ${formatMoney(row.amount_base)} ${
         state.settings?.base_currency || "USD"
       }</strong>
             <span class="muted">${row.tx_date}</span>
           </div>
-          <div class="muted">original: ${formatMoney(row.amount_original)} ${escapeHtml(
+          <div class="muted">${escapeHtml(t("original"))}: ${formatMoney(row.amount_original)} ${escapeHtml(
         row.currency_original
       )}</div>
-          <div class="muted">${row.category_l1 || "-"} / ${row.category_l2 || "-"} · reason: ${
-        row.transfer_reason || "-"
-      }</div>
-          <div class="muted mono">from: ${row.account_from_id || "-"} · to: ${row.account_to_id || "-"}</div>
+          <div class="muted">${formatCategoryPair(row.category_l1, row.category_l2)} · ${escapeHtml(t("reason"))}: ${
+            row.transfer_reason || "-"
+          }</div>
+          <div class="muted mono">${escapeHtml(t("from"))}: ${row.account_from_id || "-"} · ${escapeHtml(t("to"))}: ${row.account_to_id || "-"}</div>
           <div>${escapeHtml(row.note || "")}</div>
           ${tags}
         </article>`;
@@ -748,9 +1349,12 @@ async function loadTransactions() {
 async function loadBudgets() {
   const rows = await api(`/api/v1/budgets?month=${state.month}`);
   $("#budgetForm [name=month]").value = state.month;
+  $("#quickBudgetForm [name=month]").value = state.month;
   const target = $("#budgetList");
   if (!rows.length) {
-    target.innerHTML = '<div class="list-row muted">No monthly budgets.</div>';
+    target.innerHTML = `<div class="list-row muted">${escapeHtml(t("emptyNoMonthlyBudget"))}</div>`;
+    const quickTarget = $("#quickBudgetList");
+    if (quickTarget) quickTarget.innerHTML = `<div class="list-row muted">${escapeHtml(t("emptyNoQuickBudget"))}</div>`;
     return;
   }
   target.innerHTML = rows
@@ -758,13 +1362,28 @@ async function loadBudgets() {
       (row) => `
       <article class="list-row">
         <div class="row-main">
-          <strong>${escapeHtml(row.category_l1)}</strong>
+          <strong>${escapeHtml(withL1Emoji(row.category_l1))}</strong>
           <span class="${row.overspend ? "overspend" : "muted"}">${formatMoney(row.spent_amount)} / ${formatMoney(row.total_amount)}</span>
         </div>
-        <div class="muted">Remaining: ${formatMoney(row.remaining_amount)}</div>
+        <div class="muted">${escapeHtml(t("remaining"))}: ${formatMoney(row.remaining_amount)}</div>
       </article>`
     )
     .join("");
+  const quickTarget = $("#quickBudgetList");
+  if (quickTarget) {
+    quickTarget.innerHTML = rows
+      .map(
+        (row) => `
+        <article class="list-row">
+          <div class="row-main">
+            <strong>${escapeHtml(withL1Emoji(row.category_l1))}</strong>
+            <span class="${row.overspend ? "overspend" : "muted"}">${formatMoney(row.spent_amount)} / ${formatMoney(row.total_amount)}</span>
+          </div>
+          <div class="muted">${escapeHtml(t("remaining"))}: ${formatMoney(row.remaining_amount)}</div>
+        </article>`
+      )
+      .join("");
+  }
 }
 
 async function loadYearlyBudgets() {
@@ -772,7 +1391,7 @@ async function loadYearlyBudgets() {
   const rows = await api(`/api/v1/budgets/yearly?year=${year}`);
   const target = $("#yearlyBudgetList");
   if (!rows.length) {
-    target.innerHTML = '<div class="list-row muted">No yearly budgets.</div>';
+    target.innerHTML = `<div class="list-row muted">${escapeHtml(t("emptyNoYearlyBudget"))}</div>`;
     return;
   }
   target.innerHTML = rows
@@ -780,10 +1399,10 @@ async function loadYearlyBudgets() {
       (row) => `
       <article class="list-row">
         <div class="row-main">
-          <strong>${escapeHtml(row.category_l1)}</strong>
+          <strong>${escapeHtml(withL1Emoji(row.category_l1))}</strong>
           <span class="${row.overspend ? "overspend" : "muted"}">${formatMoney(row.spent_amount)} / ${formatMoney(row.total_amount)}</span>
         </div>
-        <div class="muted">Remaining: ${formatMoney(row.remaining_amount)}</div>
+        <div class="muted">${escapeHtml(t("remaining"))}: ${formatMoney(row.remaining_amount)}</div>
       </article>`
     )
     .join("");
@@ -797,7 +1416,7 @@ async function loadReview() {
       (row) => `
       <div class="list-row">
         <div class="row-main">
-          <strong>${escapeHtml(row.category_l1)}</strong>
+          <strong>${escapeHtml(withL1Emoji(row.category_l1))}</strong>
           <span>${formatMoney(row.total)}</span>
         </div>
       </div>`
@@ -808,7 +1427,7 @@ async function loadReview() {
       (row) => `
       <div class="list-row">
         <div class="row-main">
-          <strong>${escapeHtml(row.category_l1 || "")} / ${escapeHtml(row.category_l2 || "")}</strong>
+          <strong>${escapeHtml(withL1Emoji(row.category_l1 || ""))} / ${escapeHtml(withL2Emoji(row.category_l2 || ""))}</strong>
           <span>${formatMoney(row.amount_base)}</span>
         </div>
         <div class="muted">${row.tx_date}</div>
@@ -828,12 +1447,12 @@ function renderCategoryTree() {
   target.innerHTML = rows
     .map(([name, cfg]) => {
       const l2 = (cfg.l2 || [])
-        .map((item) => `<span class="pill">${escapeHtml(item.name)}</span>`)
+        .map((item) => `<span class="pill">${escapeHtml(withL2Emoji(item.name))}</span>`)
         .join("");
       return `
         <article class="list-row">
           <div class="row-main">
-            <strong>${escapeHtml(name)}</strong>
+            <strong>${escapeHtml(withL1Emoji(name))}</strong>
             <span class="muted">${cfg.active ? "active" : "inactive"}</span>
           </div>
           <div class="tag-wrap">${l2 || '<span class="muted">No L2 categories</span>'}</div>
@@ -873,4 +1492,111 @@ function formatSignedMoney(value) {
   const num = Number(value || 0);
   const sign = num > 0 ? "+" : num < 0 ? "-" : "";
   return `${sign}${formatMoney(Math.abs(num))}`;
+}
+
+function ensureUICurrency(value) {
+  const code = String(value || "USD").toUpperCase();
+  return UI_CURRENCIES.has(code) ? code : "USD";
+}
+
+function ensureUILanguage(value) {
+  const code = String(value || "en").toLowerCase();
+  return UI_LANGUAGES.has(code) ? code : "en";
+}
+
+function t(key, vars = {}) {
+  const lang = ensureUILanguage(state.settings?.ui_language || "en");
+  const template = I18N[lang]?.[key] ?? I18N.en[key] ?? key;
+  return String(template).replace(/\{(\w+)\}/g, (_, name) => String(vars[name] ?? ""));
+}
+
+function setText(id, value) {
+  const el = document.getElementById(id);
+  if (el) el.textContent = value;
+}
+
+function applyI18n() {
+  setText("subtitleText", t("subtitle"));
+  setText("monthLabelText", t("month"));
+  setText("dashboardTitle", t("dashboard"));
+  setText("heroNetWorthLabel", t("metricNetWorth"));
+  setText("heroLiquidCashLabel", t("metricLiquidCash"));
+  setText("heroCompositionLabel", t("netWorthComposition"));
+  setText("heroLiquidLegend", t("labelLiquid"));
+  setText("heroRestrictedLegend", t("labelRestricted"));
+  setText("budgetPlanTitle", t("plannedBudget"));
+  setText("cashFlowTitle", t("cashFlowPulse"));
+  setText("riskTitle", t("riskMetrics"));
+  setText("budgetStatusTitle", t("budgetStatus"));
+  setText("openBudgetSheetBtn", t("editBudget"));
+  setText("quickEntryTitle", t("addExpense"));
+  setText("quickEntryDateLabel", t("date"));
+  setText("quickStepL1Title", t("stepL1Title"));
+  setText("quickStepL2Title", t("stepL2Title"));
+  setText("quickStepSpendTitle", t("stepSpendTitle"));
+  setText("quickStepAmountTitle", t("stepAmountTitle"));
+  setText("quickEntryL1Label", t("categoryL1"));
+  setText("quickEntryL2Label", t("categoryL2"));
+  setText("quickEntryAccountLabel", t("account"));
+  setText("quickEntryCurrencyLabel", t("currency"));
+  setText("quickEntryAmountLabel", t("amount"));
+  setText("quickEntryWheelLabel", t("amountWheel"));
+  setText("quickEntryNoteLabel", t("note"));
+  setText("quickEntrySaveBtn", t("saveExpense"));
+  setText("budgetSheetTitle", t("budgetEditor"));
+  setText("quickBudgetMonthLabel", t("month"));
+  setText("quickBudgetL1Label", t("categoryL1"));
+  setText("quickBudgetTotalLabel", t("totalAmount"));
+  setText("quickBudgetSaveBtn", t("saveBudget"));
+  setText("settingsSheetTitle", t("settings"));
+  setText("quickSettingsUserLabel", t("userId"));
+  setText("quickSettingsLangLabel", t("language"));
+  setText("quickSettingsBaseLabel", t("baseCurrency"));
+  setText("quickSettingsTimezoneLabel", t("timezone"));
+  setText("quickSettingsSaveBtn", t("saveSettings"));
+  setText("settingsLinkBudget", t("advancedBudget"));
+  setText("settingsLinkAccounts", t("accounts"));
+  setText("settingsLinkReview", t("monthlyReview"));
+  setText("settingsLinkCategories", t("categories"));
+  setText("settingsLinkAi", t("aiProviders"));
+  setText("closeUtilityBtn", t("backToDashboard"));
+  const quickNote = document.querySelector("#quickEntryForm [name=note]");
+  if (quickNote) {
+    quickNote.placeholder = ensureUILanguage(state.settings?.ui_language) === "zh" ? "可选" : "optional";
+  }
+  if ((state.accounts || []).length) {
+    populateQuickEntryAccounts();
+  }
+  const quickCurrency = $("#quickEntryForm [name=currency_original]")?.value || "USD";
+  applyQuickEntryMax(state.quickEntryMax, quickCurrency);
+  for (const button of document.querySelectorAll("[data-close-sheet]")) {
+    if (button instanceof HTMLButtonElement) {
+      button.textContent = t("close");
+    }
+  }
+}
+
+function withL1Emoji(name) {
+  const label = String(name || "").trim();
+  if (!label || label === "-") return "-";
+  return `${CATEGORY_L1_EMOJI[label] || "🏷️"} ${label}`;
+}
+
+function withL2Emoji(name) {
+  const label = String(name || "").trim();
+  if (!label || label === "-") return "-";
+  return `${CATEGORY_L2_EMOJI[label] || "🔹"} ${label}`;
+}
+
+function formatCategoryPair(l1, l2) {
+  const left = l1 ? withL1Emoji(l1) : "-";
+  const right = l2 ? withL2Emoji(l2) : "-";
+  return `${left} / ${right}`;
+}
+
+function txTypeLabel(type) {
+  if (type === "expense") return t("txTypeExpense");
+  if (type === "income") return t("txTypeIncome");
+  if (type === "transfer") return t("txTypeTransfer");
+  return String(type || "").toUpperCase();
 }
