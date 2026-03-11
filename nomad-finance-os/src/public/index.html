@@ -38,7 +38,6 @@
       <button class="tab" data-panel="capturePanel">Capture</button>
       <button class="tab" data-panel="transactionsPanel">Transactions</button>
       <button class="tab" data-panel="budgetsPanel">Budgets</button>
-      <button class="tab" data-panel="fundsPanel">Funds</button>
       <button class="tab" data-panel="accountsPanel">Accounts</button>
       <button class="tab" data-panel="reviewPanel">Monthly Review</button>
       <button class="tab" data-panel="categoriesPanel">Categories</button>
@@ -214,50 +213,6 @@
           <h3>Yearly Budgets</h3>
           <div id="yearlyBudgetList" class="list-block"></div>
         </article>
-      </section>
-
-      <section id="fundsPanel" class="panel">
-        <h2>Funds</h2>
-        <p class="hint">Funds = money buckets balance/allocation (e.g. Travel Fund, Emergency Fund).</p>
-        <form id="fundForm" class="card form-grid">
-          <label>
-            Fund Name
-            <input name="name" type="text" required />
-          </label>
-          <label>
-            Balance
-            <input name="balance" type="number" step="0.01" value="0" />
-          </label>
-          <label>
-            Monthly Allocation
-            <input name="monthly_allocation" type="number" step="0.01" value="0" />
-          </label>
-          <div class="actions">
-            <button class="btn btn-solid" type="submit">Upsert Fund</button>
-          </div>
-        </form>
-        <form id="fundAllocateForm" class="card form-grid">
-          <label>
-            Fund
-            <select name="fund_id"></select>
-          </label>
-          <label>
-            Month
-            <input name="month" type="month" />
-          </label>
-          <label>
-            Amount
-            <input name="amount" type="number" step="0.01" required />
-          </label>
-          <label class="grid-span">
-            Note
-            <input name="note" type="text" />
-          </label>
-          <div class="actions">
-            <button class="btn btn-solid" type="submit">Allocate</button>
-          </div>
-        </form>
-        <div id="fundList" class="list-block"></div>
       </section>
 
       <section id="accountsPanel" class="panel">

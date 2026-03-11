@@ -117,32 +117,6 @@ CREATE TABLE IF NOT EXISTS yearly_budgets (
 
 CREATE INDEX IF NOT EXISTS idx_yearly_budgets_user_year ON yearly_budgets(user_id, year);
 
-CREATE TABLE IF NOT EXISTS funds (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    user_id INTEGER NOT NULL,
-    name TEXT NOT NULL,
-    balance NUMERIC NOT NULL DEFAULT 0,
-    monthly_allocation NUMERIC NOT NULL DEFAULT 0,
-    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    UNIQUE(user_id, name),
-    FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
-);
-
-CREATE TABLE IF NOT EXISTS fund_ledger (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    fund_id INTEGER NOT NULL,
-    user_id INTEGER NOT NULL,
-    month TEXT,
-    amount NUMERIC NOT NULL,
-    direction TEXT NOT NULL,
-    note TEXT NOT NULL DEFAULT '',
-    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    FOREIGN KEY (fund_id) REFERENCES funds(id) ON DELETE CASCADE,
-    FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
-);
-
-CREATE INDEX IF NOT EXISTS idx_fund_ledger_user_month ON fund_ledger(user_id, month);
-
 CREATE TABLE IF NOT EXISTS ai_provider_credentials (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     user_id INTEGER NOT NULL,

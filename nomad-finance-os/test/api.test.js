@@ -322,7 +322,7 @@ test("BYOK provider CRUD + parse-text extraction + confirm flow", async () => {
   assert.equal(confirmRes.body.type, "expense");
 });
 
-test("yearly budgets + funds + monthly snapshot generation", async () => {
+test("yearly budgets + monthly snapshot generation", async () => {
   const { api } = createHarness();
   const year = 2026;
   const month = "2026-03";
@@ -338,21 +338,6 @@ test("yearly budgets + funds + monthly snapshot generation", async () => {
   assert.equal(yearlyList.status, 200);
   assert.equal(yearlyList.body.length, 1);
   assert.equal(yearlyList.body[0].category_l1, "Travel");
-
-  const fundsList = await api.get("/api/v1/funds").send();
-  assert.equal(fundsList.status, 200);
-  assert.ok(fundsList.body.length >= 5);
-
-  const targetFund = fundsList.body.find((f) => f.name === "Travel Fund");
-  assert.ok(targetFund);
-  const allocateRes = await api.post("/api/v1/funds/allocate").send({
-    fund_id: targetFund.id,
-    month,
-    amount: 300,
-    note: "seed travel fund"
-  });
-  assert.equal(allocateRes.status, 201);
-  assert.equal(Number(allocateRes.body.balance), Number(targetFund.balance) + 300);
 
   const snapshotRes = await api.post("/api/v1/reviews/monthly/generate").send({ month });
   assert.equal(snapshotRes.status, 201);

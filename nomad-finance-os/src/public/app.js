@@ -5,7 +5,6 @@ const state = {
   categories: {},
   settings: null,
   providers: [],
-  funds: [],
   txTagFilter: "",
   latestExtractionId: null,
   latestExtractionDraft: null
@@ -38,8 +37,6 @@ function bindUI() {
   $("#yearlyBudgetForm").addEventListener("submit", submitYearlyBudgetForm);
   $("#l1Form").addEventListener("submit", submitL1Form);
   $("#l2Form").addEventListener("submit", submitL2Form);
-  $("#fundForm").addEventListener("submit", submitFundForm);
-  $("#fundAllocateForm").addEventListener("submit", submitFundAllocateForm);
   $("#settingsForm").addEventListener("submit", submitSettingsForm);
   $("#providerForm").addEventListener("submit", submitProviderForm);
   $("#captureTextForm").addEventListener("submit", submitCaptureTextForm);
@@ -148,7 +145,7 @@ function showToast(message, isError = false) {
 async function loadAll() {
   try {
     syncControlState();
-    await Promise.all([loadSettings(), loadCategories(), loadAccounts(), loadProviders(), loadFunds()]);
+    await Promise.all([loadSettings(), loadCategories(), loadAccounts(), loadProviders()]);
     await Promise.all([
       loadDashboard(),
       loadTransactions(),
@@ -188,12 +185,6 @@ async function loadAccounts() {
 async function loadProviders() {
   state.providers = (await api("/api/v1/ai/providers")) || [];
   renderProviders();
-}
-
-async function loadFunds() {
-  state.funds = (await api("/api/v1/funds")) || [];
-  renderFunds();
-  populateFundSelect();
 }
 
 function populateL1Selects() {
@@ -238,14 +229,6 @@ function populateAccountSelects() {
   }
 }
 
-function populateFundSelect() {
-  const select = $("#fundAllocateForm [name=fund_id]");
-  select.innerHTML = "";
-  for (const fund of state.funds || []) {
-    select.appendChild(new Option(`${fund.name} (${formatMoney(fund.balance)})`, String(fund.id)));
-  }
-}
-
 function handleTxTypeChange() {
   const type = $("#transactionForm [name=type]").value;
   for (const el of document.querySelectorAll(".field-expense")) {
@@ -284,7 +267,7 @@ async function submitAccountForm(event) {
     event.currentTarget.reset();
     $("#accountForm [name=currency]").value = "USD";
     showToast("Account created");
-    await Promise.all([loadAccounts(), loadDashboard(), loadFunds()]);
+    await Promise.all([loadAccounts(), loadDashboard()]);
   } catch (error) {
     showToast(error.message, true);
   }
@@ -365,47 +348,6 @@ async function submitYearlyBudgetForm(event) {
     });
     showToast("Yearly budget saved");
     await loadYearlyBudgets();
-  } catch (error) {
-    showToast(error.message, true);
-  }
-}
-
-async function submitFundForm(event) {
-  event.preventDefault();
-  const fd = new FormData(event.currentTarget);
-  try {
-    await api("/api/v1/funds", {
-      method: "POST",
-      body: JSON.stringify({
-        name: fd.get("name"),
-        balance: Number(fd.get("balance") || "0"),
-        monthly_allocation: Number(fd.get("monthly_allocation") || "0")
-      })
-    });
-    showToast("Fund upserted");
-    await loadFunds();
-  } catch (error) {
-    showToast(error.message, true);
-  }
-}
-
-async function submitFundAllocateForm(event) {
-  event.preventDefault();
-  const fd = new FormData(event.currentTarget);
-  try {
-    await api("/api/v1/funds/allocate", {
-      method: "POST",
-      body: JSON.stringify({
-        fund_id: Number(fd.get("fund_id")),
-        month: fd.get("month") || state.month,
-        amount: Number(fd.get("amount")),
-        note: fd.get("note") || ""
-      })
-    });
-    showToast("Fund allocated");
-    event.currentTarget.reset();
-    $("#fundAllocateForm [name=month]").value = state.month;
-    await loadFunds();
   } catch (error) {
     showToast(error.message, true);
   }
@@ -677,26 +619,6 @@ function renderProviders() {
     .join("");
 }
 
-function renderFunds() {
-  const target = $("#fundList");
-  if (!Array.isArray(state.funds) || !state.funds.length) {
-    target.innerHTML = '<div class="list-row muted">No funds configured.</div>';
-    return;
-  }
-  target.innerHTML = state.funds
-    .map(
-      (row) => `
-      <article class="list-row">
-        <div class="row-main">
-          <strong>${escapeHtml(row.name)}</strong>
-          <span>${formatMoney(row.balance)}</span>
-        </div>
-        <div class="muted">monthly allocation: ${formatMoney(row.monthly_allocation)}</div>
-      </article>`
-    )
-    .join("");
-}
-
 async function loadTransactions() {
   let path = `/api/v1/transactions?month=${state.month}`;
   if (state.txTagFilter) {
@@ -843,8 +765,7 @@ async function refreshAfterLedgerChange() {
     loadBudgets(),
     loadYearlyBudgets(),
     loadReview(),
-    loadRisk(),
-    loadFunds()
+    loadRisk()
   ]);
 }
 

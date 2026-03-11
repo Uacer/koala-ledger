@@ -55,18 +55,6 @@ function ensureUserAndSeedDefaults(db, userId) {
   });
   seedCategories();
 
-  const insertFund = db.prepare(
-    "INSERT OR IGNORE INTO funds (user_id, name, balance, monthly_allocation) VALUES (?, ?, 0, 0)"
-  );
-  for (const defaultFundName of [
-    "Living Fund",
-    "Travel Fund",
-    "Emergency Fund",
-    "Investment Fund",
-    "Lifestyle Fund"
-  ]) {
-    insertFund.run(userId, defaultFundName);
-  }
 }
 
 function normalizeMonth(month) {

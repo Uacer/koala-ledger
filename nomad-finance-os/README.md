@@ -5,7 +5,6 @@ Web-first MVP backend implementing:
 - Expense with `category_l1 + category_l2 + tags`
 - Budget control at `category_l1` level
 - Yearly budgets
-- Funds (Living/Travel/Emergency/Investment/Lifestyle) with allocation ledger
 - Restricted cash accounting for deposits (`deposit_lock`, `deposit_release`)
 - Dashboard with `restricted_cash_total`
 - Runway and risk metrics
@@ -16,14 +15,9 @@ Web-first MVP backend implementing:
 - Account balances tracked in each account's own currency, while dashboard metrics are unified into base currency
 - Dashboard/Review/Budget spent calculations are dynamically recomputed in current base currency from original transaction currency
 
-## Budget vs Funds
+## Budget
 
 - `Budget`: spending limit by category and period (monthly/yearly), used for overspend control.
-- `Funds`: money buckets balance/allocation (Travel Fund, Emergency Fund...), used for planning and earmarking cash.
-
-These are complementary:
-- Budget answers: "how much I should spend".
-- Funds answer: "how much cash I reserved for a purpose".
 
 ## Crypto Exposure Formula
 
@@ -160,9 +154,6 @@ Sample cron entries are provided at `ops/cron/backup.cron`:
 - `GET /api/v1/budgets`
 - `POST /api/v1/budgets/yearly`
 - `GET /api/v1/budgets/yearly`
-- `GET /api/v1/funds`
-- `POST /api/v1/funds`
-- `POST /api/v1/funds/allocate`
 - `GET /api/v1/dashboard`
 - `GET /api/v1/metrics/runway`
 - `GET /api/v1/metrics/risk`
