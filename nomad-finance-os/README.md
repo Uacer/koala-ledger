@@ -47,6 +47,14 @@ Optional env:
 - `DB_PATH`: SQLite path (defaults to `nomad-finance.db`)
 - `BACKUP_DIR`: backup output directory (defaults to `backups`)
 - `PORT`: API port (defaults to `5001`)
+- `EXCHANGERATE_HOST_ACCESS_KEY`: optional API key for `exchangerate.host` live FX endpoint
+
+FX provider priority:
+
+1. `exchangerate.host/live` (when `EXCHANGERATE_HOST_ACCESS_KEY` is configured)
+2. `frankfurter.dev` (free, no key)
+3. `exchangerate.host/latest` legacy endpoint
+4. static fallback rates embedded in code
 
 ## Test
 

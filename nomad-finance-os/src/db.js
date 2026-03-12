@@ -15,6 +15,21 @@ function createDb(filename = ":memory:") {
 function runMigrations(db) {
   ensureColumn(db, "accounts", "opening_balance", "NUMERIC NOT NULL DEFAULT 0");
   ensureColumn(db, "user_settings", "ui_language", "TEXT NOT NULL DEFAULT 'en'");
+  ensureColumn(db, "budgets", "budget_currency", "TEXT");
+  ensureColumn(db, "yearly_budgets", "budget_currency", "TEXT");
+
+  // Legacy budgets had no currency column. Default historical assumption is USD
+  // because the product bootstraps users with USD as initial base currency.
+  db.exec(`
+    UPDATE budgets
+    SET budget_currency = 'USD'
+    WHERE budget_currency IS NULL OR trim(budget_currency) = ''
+  `);
+  db.exec(`
+    UPDATE yearly_budgets
+    SET budget_currency = 'USD'
+    WHERE budget_currency IS NULL OR trim(budget_currency) = ''
+  `);
 }
 
 function ensureColumn(db, table, column, ddl) {

@@ -1,4 +1,5 @@
 const path = require("node:path");
+const { randomUUID } = require("node:crypto");
 const express = require("express");
 const { z } = require("zod");
 const {
@@ -18,6 +19,47 @@ function createApp(db) {
   const app = express();
   app.use(express.json({ limit: "8mb" }));
   app.use(express.static(path.join(__dirname, "public")));
+  app.use((req, res, next) => {
+    const startedAt = Date.now();
+    const requestId = `r_${randomUUID().slice(0, 12)}`;
+    req.requestId = requestId;
+    res.setHeader("x-request-id", requestId);
+
+    const originalJson = res.json.bind(res);
+    res.locals.errorSummary = "";
+    res.json = (payload) => {
+      if (payload && typeof payload === "object" && "error" in payload) {
+        res.locals.errorSummary = summarizeErrorForLog(payload.error);
+      }
+      return originalJson(payload);
+    };
+
+    res.on("finish", () => {
+      if (!(req.path.startsWith("/api/") || req.path === "/health")) {
+        return;
+      }
+      const userId = Number.isInteger(req.userId) ? req.userId : parseUserIdForLog(req.header("x-user-id"));
+      const line = {
+        request_id: requestId,
+        method: req.method,
+        path: req.originalUrl || req.path,
+        status: res.statusCode,
+        duration_ms: Date.now() - startedAt,
+        user_id: userId
+      };
+      console.log(JSON.stringify({ event: "http_request", ...line }));
+      if (res.statusCode >= 400 && res.locals.errorSummary) {
+        console.error(
+          JSON.stringify({
+            event: "http_error",
+            ...line,
+            error: res.locals.errorSummary
+          })
+        );
+      }
+    });
+    next();
+  });
 
   app.use((req, res, next) => {
     const rawUserId = req.header("x-user-id") || "1";
@@ -204,6 +246,105 @@ function createApp(db) {
       .prepare("SELECT * FROM accounts WHERE user_id = ? ORDER BY id")
       .all(req.userId);
     res.json(rows);
+  });
+
+  app.get("/api/v1/accounts/:id/usage", (req, res) => {
+    const accountId = Number.parseInt(String(req.params.id), 10);
+    if (!Number.isInteger(accountId) || accountId <= 0) {
+      return res.status(400).json({ error: "Invalid account id." });
+    }
+    const account = db
+      .prepare("SELECT id FROM accounts WHERE user_id = ? AND id = ?")
+      .get(req.userId, accountId);
+    if (!account) {
+      return res.status(404).json({ error: "Account not found." });
+    }
+    const linkedTransactions = countLinkedTransactions(db, req.userId, accountId);
+    res.json({ account_id: accountId, linked_transactions: linkedTransactions });
+  });
+
+  app.patch("/api/v1/accounts/:id", (req, res) => {
+    const accountId = Number.parseInt(String(req.params.id), 10);
+    if (!Number.isInteger(accountId) || accountId <= 0) {
+      return res.status(400).json({ error: "Invalid account id." });
+    }
+    const schema = z.object({
+      balance: z.number().finite()
+    });
+    const parsed = schema.safeParse(req.body);
+    if (!parsed.success) {
+      return res.status(400).json({ error: parsed.error.flatten() });
+    }
+    const account = db
+      .prepare("SELECT id, currency FROM accounts WHERE user_id = ? AND id = ?")
+      .get(req.userId, accountId);
+    if (!account) {
+      return res.status(404).json({ error: "Account not found." });
+    }
+
+    const accountCurrency = normalizeCurrency(account.currency || "USD");
+    const txDelta = computeAccountTxDelta(db, req.userId, accountId, accountCurrency);
+    const nextBalance = Number(parsed.data.balance);
+    const nextOpening = Number((nextBalance - txDelta).toFixed(8));
+
+    db.prepare(
+      `
+        UPDATE accounts
+        SET opening_balance = ?, balance = ?
+        WHERE user_id = ? AND id = ?
+      `
+    ).run(nextOpening, nextBalance, req.userId, accountId);
+
+    const updated = db
+      .prepare("SELECT * FROM accounts WHERE user_id = ? AND id = ?")
+      .get(req.userId, accountId);
+    res.json(updated);
+  });
+
+  app.delete("/api/v1/accounts/:id", (req, res) => {
+    const accountId = Number.parseInt(String(req.params.id), 10);
+    if (!Number.isInteger(accountId) || accountId <= 0) {
+      return res.status(400).json({ error: "Invalid account id." });
+    }
+    const forceDelete = String(req.query.force || "").toLowerCase() === "true";
+    const account = db
+      .prepare("SELECT id FROM accounts WHERE user_id = ? AND id = ?")
+      .get(req.userId, accountId);
+    if (!account) {
+      return res.status(404).json({ error: "Account not found." });
+    }
+    const linkedTransactions = countLinkedTransactions(db, req.userId, accountId);
+    if (linkedTransactions > 0 && !forceDelete) {
+      return res.status(409).json({
+        error: "Account has linked transactions and cannot be deleted.",
+        error_code: "ACCOUNT_LINKED_TRANSACTIONS",
+        linked_transactions: linkedTransactions
+      });
+    }
+
+    if (forceDelete) {
+      const deleteTransactions = db.prepare(
+        `
+          DELETE FROM transactions
+          WHERE user_id = ? AND (account_from_id = ? OR account_to_id = ?)
+        `
+      );
+      const deleteAccount = db.prepare("DELETE FROM accounts WHERE user_id = ? AND id = ?");
+      const runForcedDelete = db.transaction(() => {
+        const txResult = deleteTransactions.run(req.userId, accountId, accountId);
+        const accountResult = deleteAccount.run(req.userId, accountId);
+        if (accountResult.changes === 0) {
+          throw new Error("Account not found.");
+        }
+        return Number(txResult.changes || 0);
+      });
+      const deletedTransactions = runForcedDelete();
+      rebuildUserBalances(db, req.userId);
+      return res.json({ ok: true, forced: true, deleted_transactions: deletedTransactions });
+    }
+
+    db.prepare("DELETE FROM accounts WHERE user_id = ? AND id = ?").run(req.userId, accountId);
+    res.json({ ok: true, forced: false, deleted_transactions: 0 });
   });
 
   app.post("/api/v1/admin/rebuild-balances", (req, res) => {
@@ -687,17 +828,18 @@ function createApp(db) {
       return res.status(400).json({ error: parsed.error.flatten() });
     }
     const payload = parsed.data;
+    const settings = getUserSettings(db, req.userId);
     if (!isActiveL1(db, req.userId, payload.category_l1)) {
       return res.status(400).json({ error: "Budget category_l1 must be active." });
     }
     db.prepare(
       `
-        INSERT INTO budgets (user_id, month, category_l1, total_amount)
-        VALUES (?, ?, ?, ?)
+        INSERT INTO budgets (user_id, month, category_l1, total_amount, budget_currency)
+        VALUES (?, ?, ?, ?, ?)
         ON CONFLICT(user_id, month, category_l1)
-        DO UPDATE SET total_amount = excluded.total_amount
+        DO UPDATE SET total_amount = excluded.total_amount, budget_currency = excluded.budget_currency
       `
-    ).run(req.userId, payload.month, payload.category_l1, payload.total_amount);
+    ).run(req.userId, payload.month, payload.category_l1, payload.total_amount, settings.base_currency);
     logEvent(db, req.userId, "budget_monthly_upserted", {
       month: payload.month,
       category_l1: payload.category_l1
@@ -729,19 +871,27 @@ function createApp(db) {
     const rows = db
       .prepare(
         `
-          SELECT b.month, b.category_l1, b.total_amount
+          SELECT b.month, b.category_l1, b.total_amount, b.budget_currency
           FROM budgets b
           WHERE b.user_id = ? AND b.month = ?
           ORDER BY b.category_l1
         `
       )
       .all(req.userId, month)
-      .map((row) =>
-        enrichBudgetRow({
+      .map((row) => {
+        const budgetCurrency = normalizeCurrency(row.budget_currency || baseCurrency);
+        const totalInBase = convertCurrency(
+          Number(row.total_amount || 0),
+          budgetCurrency,
+          baseCurrency
+        );
+        return enrichBudgetRow({
           ...row,
+          total_amount: totalInBase,
+          budget_currency: budgetCurrency,
           spent_amount: Number(spentByCategory.get(row.category_l1) || 0)
-        })
-      );
+        });
+      });
     res.json(rows);
   });
 
@@ -756,17 +906,18 @@ function createApp(db) {
       return res.status(400).json({ error: parsed.error.flatten() });
     }
     const payload = parsed.data;
+    const settings = getUserSettings(db, req.userId);
     if (!isActiveL1(db, req.userId, payload.category_l1)) {
       return res.status(400).json({ error: "Yearly budget category_l1 must be active." });
     }
     db.prepare(
       `
-        INSERT INTO yearly_budgets (user_id, year, category_l1, total_amount)
-        VALUES (?, ?, ?, ?)
+        INSERT INTO yearly_budgets (user_id, year, category_l1, total_amount, budget_currency)
+        VALUES (?, ?, ?, ?, ?)
         ON CONFLICT(user_id, year, category_l1)
-        DO UPDATE SET total_amount = excluded.total_amount
+        DO UPDATE SET total_amount = excluded.total_amount, budget_currency = excluded.budget_currency
       `
-    ).run(req.userId, payload.year, payload.category_l1, payload.total_amount);
+    ).run(req.userId, payload.year, payload.category_l1, payload.total_amount, settings.base_currency);
     logEvent(db, req.userId, "budget_yearly_upserted", {
       year: payload.year,
       category_l1: payload.category_l1
@@ -799,7 +950,7 @@ function createApp(db) {
     const rows = db
       .prepare(
         `
-          SELECT y.year, y.category_l1, y.total_amount
+          SELECT y.year, y.category_l1, y.total_amount, y.budget_currency
           FROM yearly_budgets y
           WHERE y.user_id = ? AND y.year = ?
           ORDER BY y.category_l1
@@ -810,6 +961,12 @@ function createApp(db) {
         year: row.year,
         ...enrichBudgetRow({
           ...row,
+          total_amount: convertCurrency(
+            Number(row.total_amount || 0),
+            normalizeCurrency(row.budget_currency || baseCurrency),
+            baseCurrency
+          ),
+          budget_currency: normalizeCurrency(row.budget_currency || baseCurrency),
           spent_amount: Number(spentByCategory.get(row.category_l1) || 0)
         })
       }));
@@ -1312,6 +1469,7 @@ function logEvent(db, userId, eventName, payload = {}) {
 }
 
 function buildDashboardPayload(db, userId, month, baseCurrency) {
+  const year = String(month || "").slice(0, 4) || new Date().toISOString().slice(0, 4);
   const accountRows = db
     .prepare("SELECT id, name, balance, currency, type FROM accounts WHERE user_id = ?")
     .all(userId);
@@ -1367,7 +1525,7 @@ function buildDashboardPayload(db, userId, month, baseCurrency) {
   const budgetRows = db
     .prepare(
       `
-        SELECT category_l1, total_amount
+        SELECT category_l1, total_amount, budget_currency
         FROM budgets
         WHERE user_id = ? AND month = ?
         ORDER BY category_l1
@@ -1376,7 +1534,58 @@ function buildDashboardPayload(db, userId, month, baseCurrency) {
     .all(userId, month);
   const budgetStatus = budgetRows.map((row) => {
     const spent = Number(spentByCategory.get(row.category_l1) || 0);
-    const total = Number(row.total_amount);
+    const total = convertCurrency(
+      Number(row.total_amount || 0),
+      normalizeCurrency(row.budget_currency || baseCurrency),
+      baseCurrency
+    );
+    return {
+      category_l1: row.category_l1,
+      total_amount: total,
+      spent_amount: spent,
+      remaining_amount: total - spent,
+      overspend: spent > total
+    };
+  });
+
+  const yearExpenseRows = db
+    .prepare(
+      `
+        SELECT category_l1, amount_original, currency_original
+        FROM transactions
+        WHERE user_id = ? AND type = 'expense' AND substr(tx_date, 1, 4) = ?
+      `
+    )
+    .all(userId, year);
+  const spentByCategoryYearly = new Map();
+  for (const tx of yearExpenseRows) {
+    const converted = convertCurrency(
+      Number(tx.amount_original || 0),
+      normalizeCurrency(tx.currency_original || baseCurrency),
+      baseCurrency
+    );
+    spentByCategoryYearly.set(
+      tx.category_l1,
+      (spentByCategoryYearly.get(tx.category_l1) || 0) + converted
+    );
+  }
+  const yearlyBudgetRows = db
+    .prepare(
+      `
+        SELECT category_l1, total_amount, budget_currency
+        FROM yearly_budgets
+        WHERE user_id = ? AND year = ?
+        ORDER BY category_l1
+      `
+    )
+    .all(userId, Number.parseInt(year, 10));
+  const budgetStatusYearly = yearlyBudgetRows.map((row) => {
+    const spent = Number(spentByCategoryYearly.get(row.category_l1) || 0);
+    const total = convertCurrency(
+      Number(row.total_amount || 0),
+      normalizeCurrency(row.budget_currency || baseCurrency),
+      baseCurrency
+    );
     return {
       category_l1: row.category_l1,
       total_amount: total,
@@ -1401,7 +1610,8 @@ function buildDashboardPayload(db, userId, month, baseCurrency) {
     net_cash_flow: monthlyIncome - monthlyExpense,
     burn_rate: Number(burnRate.toFixed(2)),
     runway_months: runway,
-    budget_status: budgetStatus
+    budget_status: budgetStatus,
+    budget_status_yearly: budgetStatusYearly
   };
 }
 
@@ -1658,6 +1868,24 @@ function normalizeDate(value) {
   return str;
 }
 
+function parseUserIdForLog(rawUserId) {
+  const parsed = Number.parseInt(String(rawUserId || ""), 10);
+  return Number.isInteger(parsed) && parsed > 0 ? parsed : null;
+}
+
+function summarizeErrorForLog(error) {
+  if (typeof error === "string") return error.slice(0, 280);
+  if (!error) return "";
+  if (typeof error === "object" && typeof error.message === "string") {
+    return error.message.slice(0, 280);
+  }
+  try {
+    return JSON.stringify(error).slice(0, 280);
+  } catch {
+    return String(error).slice(0, 280);
+  }
+}
+
 function normalizeSupportedCurrency(currency, fieldName = "currency") {
   const normalized = normalizeCurrency(currency || "USD");
   if (SUPPORTED_CURRENCIES.includes(normalized)) {
@@ -1673,6 +1901,47 @@ function convertCurrency(amount, fromCurrency, toCurrency) {
   const numeric = Number(amount);
   if (from === to) return numeric;
   return Number((numeric * fallbackFxRate(from, to)).toFixed(8));
+}
+
+function computeAccountTxDelta(db, userId, accountId, accountCurrency) {
+  const rows = db
+    .prepare(
+      `
+        SELECT type, amount_original, currency_original, account_from_id, account_to_id
+        FROM transactions
+        WHERE user_id = ? AND (account_from_id = ? OR account_to_id = ?)
+        ORDER BY id
+      `
+    )
+    .all(userId, accountId, accountId);
+  let delta = 0;
+  for (const tx of rows) {
+    const amountOriginal = Number(tx.amount_original || 0);
+    const sourceCurrency = normalizeCurrency(tx.currency_original || "USD");
+    const converted = convertCurrency(amountOriginal, sourceCurrency, accountCurrency);
+    if (tx.type === "expense" && tx.account_from_id === accountId) {
+      delta -= converted;
+    } else if (tx.type === "income" && tx.account_to_id === accountId) {
+      delta += converted;
+    } else if (tx.type === "transfer") {
+      if (tx.account_from_id === accountId) delta -= converted;
+      if (tx.account_to_id === accountId) delta += converted;
+    }
+  }
+  return Number(delta.toFixed(8));
+}
+
+function countLinkedTransactions(db, userId, accountId) {
+  const row = db
+    .prepare(
+      `
+        SELECT COUNT(*) AS count
+        FROM transactions
+        WHERE user_id = ? AND (account_from_id = ? OR account_to_id = ?)
+      `
+    )
+    .get(userId, accountId, accountId);
+  return Number(row?.count || 0);
 }
 
 function rebuildUserBalances(db, userId) {

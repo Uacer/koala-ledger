@@ -87,6 +87,7 @@ CREATE TABLE IF NOT EXISTS budgets (
     month TEXT NOT NULL,
     category_l1 TEXT NOT NULL,
     total_amount NUMERIC NOT NULL,
+    budget_currency TEXT NOT NULL DEFAULT 'USD',
     created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
     UNIQUE(user_id, month, category_l1),
     FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
@@ -111,6 +112,7 @@ CREATE TABLE IF NOT EXISTS yearly_budgets (
     year INTEGER NOT NULL,
     category_l1 TEXT NOT NULL,
     total_amount NUMERIC NOT NULL,
+    budget_currency TEXT NOT NULL DEFAULT 'USD',
     created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
     UNIQUE(user_id, year, category_l1),
     FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE

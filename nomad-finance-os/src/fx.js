@@ -11,6 +11,10 @@ const FALLBACK_USD_RATES = {
   USDT: 1
 };
 
+const EXCHANGERATE_HOST_KEY = String(
+  process.env.EXCHANGERATE_HOST_ACCESS_KEY || process.env.EXCHANGERATE_HOST_API_KEY || ""
+).trim();
+
 function normalizeCurrency(currency) {
   const raw = String(currency || "USD").trim();
   const upper = raw.toUpperCase();
@@ -55,23 +59,80 @@ async function fetchFxRate(from, to) {
     return { rate: 1, source: "identity" };
   }
 
+  if (EXCHANGERATE_HOST_KEY) {
+    try {
+      return await fetchFromExchangeRateHostLive(f, t, EXCHANGERATE_HOST_KEY);
+    } catch {
+      // continue to next provider
+    }
+  }
+
   try {
-    const url = `https://api.exchangerate.host/latest?base=${encodeURIComponent(
-      f
-    )}&symbols=${encodeURIComponent(t)}`;
-    const response = await fetch(url, { method: "GET" });
-    if (!response.ok) {
-      throw new Error(`FX provider failed: ${response.status}`);
-    }
-    const payload = await response.json();
-    const rate = Number(payload?.rates?.[t]);
-    if (!Number.isFinite(rate) || rate <= 0) {
-      throw new Error("Invalid FX rate from provider.");
-    }
-    return { rate: Number(rate.toFixed(8)), source: "exchangerate.host" };
+    return await fetchFromFrankfurter(f, t);
+  } catch {
+    // continue to next provider
+  }
+
+  try {
+    return await fetchFromExchangeRateHostLegacy(f, t);
   } catch {
     return { rate: fallbackFxRate(f, t), source: "fallback_static" };
   }
+}
+
+async function fetchFromExchangeRateHostLive(from, to, accessKey) {
+  const url = `https://api.exchangerate.host/live?access_key=${encodeURIComponent(
+    accessKey
+  )}&source=${encodeURIComponent(from)}&currencies=${encodeURIComponent(to)}`;
+  const response = await fetch(url, { method: "GET" });
+  if (!response.ok) {
+    throw new Error(`FX provider failed: ${response.status}`);
+  }
+  const payload = await response.json();
+  if (!payload?.success) {
+    throw new Error(payload?.error?.info || "Invalid FX payload from exchangerate.host/live.");
+  }
+  const quoteKey = `${from}${to}`;
+  const rate = Number(payload?.quotes?.[quoteKey]);
+  if (!Number.isFinite(rate) || rate <= 0) {
+    throw new Error("Invalid FX rate from exchangerate.host/live.");
+  }
+  return { rate: Number(rate.toFixed(8)), source: "exchangerate.host_live" };
+}
+
+async function fetchFromFrankfurter(from, to) {
+  const url = `https://api.frankfurter.dev/v1/latest?base=${encodeURIComponent(
+    from
+  )}&symbols=${encodeURIComponent(to)}`;
+  const response = await fetch(url, { method: "GET" });
+  if (!response.ok) {
+    throw new Error(`FX provider failed: ${response.status}`);
+  }
+  const payload = await response.json();
+  const rate = Number(payload?.rates?.[to]);
+  if (!Number.isFinite(rate) || rate <= 0) {
+    throw new Error("Invalid FX rate from frankfurter.");
+  }
+  return { rate: Number(rate.toFixed(8)), source: "frankfurter" };
+}
+
+async function fetchFromExchangeRateHostLegacy(from, to) {
+  const url = `https://api.exchangerate.host/latest?base=${encodeURIComponent(
+    from
+  )}&symbols=${encodeURIComponent(to)}`;
+  const response = await fetch(url, { method: "GET" });
+  if (!response.ok) {
+    throw new Error(`FX provider failed: ${response.status}`);
+  }
+  const payload = await response.json();
+  if (payload?.success === false) {
+    throw new Error(payload?.error?.info || "Invalid FX payload from exchangerate.host/latest.");
+  }
+  const rate = Number(payload?.rates?.[to]);
+  if (!Number.isFinite(rate) || rate <= 0) {
+    throw new Error("Invalid FX rate from exchangerate.host/latest.");
+  }
+  return { rate: Number(rate.toFixed(8)), source: "exchangerate.host_latest" };
 }
 
 module.exports = {

@@ -11,6 +11,7 @@ services:
       - DB_PATH=/data/nomad-finance.db
       - BACKUP_DIR=/backups
       - CREDENTIAL_SECRET=change-me-in-production
+      - EXCHANGERATE_HOST_ACCESS_KEY=${EXCHANGERATE_HOST_ACCESS_KEY:-}
     volumes:
       - nomad_data:/data
       - nomad_backups:/backups

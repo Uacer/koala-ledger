@@ -32,14 +32,14 @@
     </header>
 
     <nav class="tabs" aria-label="Panels">
-      <button class="tab active" data-panel="dashboardPanel">Dashboard</button>
-      <button class="tab" data-panel="capturePanel">Capture</button>
-      <button class="tab" data-panel="transactionsPanel">Transactions</button>
-      <button class="tab" data-panel="budgetsPanel">Budgets</button>
-      <button class="tab" data-panel="accountsPanel">Accounts</button>
-      <button class="tab" data-panel="reviewPanel">Monthly Review</button>
-      <button class="tab" data-panel="categoriesPanel">Categories</button>
-      <button class="tab" data-panel="settingsPanel">Settings</button>
+      <button class="tab active" data-panel="dashboardPanel">🏠 Dashboard</button>
+      <button class="tab" data-panel="capturePanel">📸 Capture</button>
+      <button class="tab" data-panel="transactionsPanel">🧾 Transactions</button>
+      <button class="tab" data-panel="budgetsPanel">📋 Budgets</button>
+      <button class="tab" data-panel="accountsPanel">🏦 Accounts</button>
+      <button class="tab" data-panel="reviewPanel">🗓️ Monthly Review</button>
+      <button class="tab" data-panel="categoriesPanel">🧩 Categories</button>
+      <button class="tab" data-panel="settingsPanel">⚙️ Settings</button>
     </nav>
 
     <main class="layout">
@@ -575,9 +575,41 @@
               <input id="toggleRisk" type="checkbox" />
               <span id="toggleRiskLabel">Risk Metrics</span>
             </label>
+            <label class="toggle">
+              <input id="toggleDebug" type="checkbox" />
+              <span id="toggleDebugLabel">Debug Panel</span>
+            </label>
           </div>
           <button class="btn btn-solid" id="quickSettingsSaveBtn" type="submit">Save Settings</button>
         </form>
+        <section id="debugPanel" class="debug-panel hidden">
+          <div class="section-head">
+            <h3 id="debugPanelTitle">Debug Panel</h3>
+            <span id="debugCountHint" class="mono muted">0</span>
+          </div>
+          <div class="debug-controls">
+            <label class="toggle">
+              <input id="debugOnlyFailed" type="checkbox" />
+              <span id="debugOnlyFailedLabel">Only Failed</span>
+            </label>
+            <label>
+              <span id="debugFilterLabel">Filter</span>
+              <input id="debugFilterInput" type="text" placeholder="accounts" />
+            </label>
+          </div>
+          <div class="tag-wrap">
+            <button class="btn" id="debugCopyBtn" type="button">Copy Diagnostics</button>
+            <button class="btn btn-ghost" id="debugClearBtn" type="button">Clear</button>
+          </div>
+          <article class="debug-block">
+            <h3 id="debugRequestsTitle">Requests</h3>
+            <div id="debugRequestList" class="list-block"></div>
+          </article>
+          <article class="debug-block">
+            <h3 id="debugRuntimeTitle">Runtime Errors</h3>
+            <div id="debugRuntimeList" class="list-block"></div>
+          </article>
+        </section>
         <div class="secondary-links">
           <button class="btn btn-ghost" id="settingsLinkBudget" type="button" data-open-panel="budgetsPanel">Advanced Budget</button>
           <button class="btn btn-ghost" id="settingsLinkAccounts" type="button" data-open-panel="accountsPanel">Accounts</button>
@@ -588,7 +620,33 @@
       </article>
     </section>
 
-    <button id="closeUtilityBtn" class="utility-close hidden" type="button">Back to Dashboard</button>
+    <section id="accountEditSheet" class="sheet hidden" aria-hidden="true">
+      <div class="sheet-backdrop" data-close-sheet="accountEditSheet"></div>
+      <article class="sheet-card">
+        <div class="sheet-head">
+          <h3 id="accountEditTitle">Edit Account</h3>
+          <button class="btn btn-ghost" type="button" data-close-sheet="accountEditSheet">Close</button>
+        </div>
+        <form id="accountEditForm" class="sheet-form">
+          <input name="account_id" type="hidden" />
+          <label>
+            <span id="accountEditNameLabel">Account</span>
+            <input name="account_name" type="text" readonly />
+          </label>
+          <label>
+            <span id="accountEditBalanceLabel">Balance</span>
+            <input name="balance" type="number" step="0.01" required />
+          </label>
+          <button class="btn btn-solid" id="accountEditSaveBtn" type="submit">Save Account</button>
+        </form>
+        <div class="tag-wrap">
+          <button class="btn" id="accountDeleteBtn" type="button">Delete Account</button>
+          <button class="btn btn-danger" id="accountForceDeleteBtn" type="button">Force Delete (with Transactions)</button>
+        </div>
+      </article>
+    </section>
+
+    <button id="closeUtilityBtn" class="utility-close hidden" type="button" aria-label="Back">←</button>
 
     <div id="toast" class="toast hidden"></div>
     <script src="/app.js"></script>

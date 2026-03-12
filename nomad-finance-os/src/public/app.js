@@ -7,6 +7,8 @@ const state = {
   providers: [],
   dashboard: null,
   risk: null,
+  utilityReturnSheet: "",
+  editingAccountId: null,
   quickEntryMax: 0,
   quickEntryType: "expense",
   txTagFilter: "",
@@ -21,7 +23,15 @@ const state = {
   ui: {
     showCashFlow: false,
     showTrend: false,
-    showRisk: false
+    showRisk: false,
+    showDebug: false
+  },
+  debug: {
+    requests: [],
+    runtimeErrors: [],
+    onlyFailed: false,
+    filter: "",
+    maxEntries: 100
   }
 };
 
@@ -65,27 +75,27 @@ const I18N = {
   en: {
     subtitle: "A simpler daily money cockpit.",
     month: "Month",
-    dashboard: "Dashboard",
-    cashFlowPulse: "Cash Flow Pulse",
+    dashboard: "🏠 Dashboard",
+    cashFlowPulse: "📈 Cash Flow Pulse",
     liquiditySplit: "Liquidity Split",
     runwaySignal: "Runway Signal",
-    riskMetrics: "Risk Metrics",
+    riskMetrics: "⚠️ Risk Metrics",
     budgetStatus: "Budget Status (L1 only)",
-    netWorthComposition: "Net Worth Composition",
-    plannedBudget: "Planned Budget",
+    netWorthComposition: "🧩 Net Worth Composition",
+    plannedBudget: "📋 Planned Budget",
     budgetPlanSummary: "Planned {planned} · Spent {spent} · Remaining {remaining}",
     periodMonthly: "month",
     periodYearly: "yearly",
     editBudget: "Edit Budget",
-    addExpense: "Add Expense",
-    addIncome: "Add Income",
-    addTransfer: "Add Transfer",
+    addExpense: "🧾 Add Expense",
+    addIncome: "💰 Add Income",
+    addTransfer: "🔁 Add Transfer",
     close: "Close",
     date: "Date",
-    stepL1Title: "Step 1 · Choose Category L1",
-    stepL2Title: "Step 2 · Choose Category L2",
-    stepSpendTitle: "Step 3 · Account & Currency",
-    stepAmountTitle: "Step 4 · Enter Amount",
+    stepL1Title: "Step 1 · 🗂️ Choose Category L1",
+    stepL2Title: "Step 2 · 🏷️ Choose Category L2",
+    stepSpendTitle: "Step 3 · 💳 Account & Currency",
+    stepAmountTitle: "Step 4 · 🎛️ Enter Amount",
     categoryL1: "Category L1",
     categoryL2: "Category L2",
     account: "Account",
@@ -100,7 +110,7 @@ const I18N = {
     budgetEditor: "Budget Editor",
     totalAmount: "Total Amount",
     saveBudget: "Save Budget",
-    settings: "Settings",
+    settings: "⚙️ Settings",
     userId: "User ID",
     language: "Language",
     baseCurrency: "Base Currency",
@@ -110,18 +120,44 @@ const I18N = {
     showCashFlow: "Cash Flow Pulse",
     showTrend: "Spending Curve",
     showRisk: "Risk Metrics",
-    trendTitle: "Spending Curve",
+    showDebug: "Debug Panel",
+    debugPanel: "Debug Panel",
+    debugOnlyFailed: "Only Failed",
+    debugFilter: "Filter",
+    debugFilterPlaceholder: "accounts, dashboard, 500",
+    debugCopy: "Copy Diagnostics",
+    debugClear: "Clear",
+    debugRequests: "Requests",
+    debugRuntime: "Runtime Errors",
+    debugNoRequests: "No request diagnostics yet.",
+    debugNoRuntime: "No runtime errors captured.",
+    debugCopyDone: "Diagnostics copied",
+    debugCopyFailed: "Copy failed",
+    refreshFailedAfterSave: "Saved, but refresh failed.",
+    trendTitle: "📉 Spending Curve",
     trendModeExpense: "Daily Expense",
     trendModeNetWorth: "Net Worth Change",
     trendFrom: "From",
     trendTo: "To",
     selectAccount: "Select account",
-    advancedBudget: "Advanced Budget",
-    accounts: "Accounts",
-    monthlyReview: "Monthly Review",
-    categories: "Categories",
-    aiProviders: "AI Providers",
+    advancedBudget: "🧠 Advanced Budget",
+    accounts: "🏦 Accounts",
+    monthlyReview: "🗓️ Monthly Review",
+    categories: "🧩 Categories",
+    aiProviders: "🤖 AI Providers",
     backToDashboard: "Back to Dashboard",
+    back: "Back",
+    edit: "Edit",
+    editAccount: "Edit Account",
+    saveAccount: "Save Account",
+    deleteAccount: "Delete Account",
+    forceDeleteAccount: "Force Delete (with Transactions)",
+    accountDeleteConfirm: "Delete this account? This cannot be undone.",
+    accountForceDeleteConfirm:
+      "Force delete this account and all linked transactions ({count})? This cannot be undone.",
+    accountUpdated: "Account updated",
+    accountDeleted: "Account deleted",
+    accountForceDeleted: "Account and linked transactions deleted",
     metricNetWorth: "Net Worth",
     metricLiquidCash: "Liquid Cash",
     metricRestrictedCash: "Restricted Cash",
@@ -165,27 +201,27 @@ const I18N = {
   zh: {
     subtitle: "更轻量的日常财务驾驶舱。",
     month: "月份",
-    dashboard: "总览",
-    cashFlowPulse: "现金流脉冲",
+    dashboard: "🏠 总览",
+    cashFlowPulse: "📈 现金流脉冲",
     liquiditySplit: "流动性结构",
     runwaySignal: "Runway 信号",
-    riskMetrics: "风险指标",
+    riskMetrics: "⚠️ 风险指标",
     budgetStatus: "预算进度（仅一级分类）",
-    netWorthComposition: "净资产结构",
-    plannedBudget: "预算计划",
+    netWorthComposition: "🧩 净资产结构",
+    plannedBudget: "📋 预算计划",
     budgetPlanSummary: "计划 {planned} · 已花 {spent} · 剩余 {remaining}",
     periodMonthly: "月",
     periodYearly: "每年",
     editBudget: "编辑预算",
-    addExpense: "新增支出",
-    addIncome: "新增收入",
-    addTransfer: "新增转账",
+    addExpense: "🧾 新增支出",
+    addIncome: "💰 新增收入",
+    addTransfer: "🔁 新增转账",
     close: "关闭",
     date: "日期",
-    stepL1Title: "第 1 步 · 选择一级分类",
-    stepL2Title: "第 2 步 · 选择二级分类",
-    stepSpendTitle: "第 3 步 · 选择账户与币种",
-    stepAmountTitle: "第 4 步 · 输入金额",
+    stepL1Title: "第 1 步 · 🗂️ 选择一级分类",
+    stepL2Title: "第 2 步 · 🏷️ 选择二级分类",
+    stepSpendTitle: "第 3 步 · 💳 选择账户与币种",
+    stepAmountTitle: "第 4 步 · 🎛️ 输入金额",
     categoryL1: "一级分类",
     categoryL2: "二级分类",
     account: "账户",
@@ -200,7 +236,7 @@ const I18N = {
     budgetEditor: "预算编辑",
     totalAmount: "预算总额",
     saveBudget: "保存预算",
-    settings: "设置",
+    settings: "⚙️ 设置",
     userId: "用户 ID",
     language: "语言",
     baseCurrency: "基准货币",
@@ -210,18 +246,43 @@ const I18N = {
     showCashFlow: "现金流脉冲",
     showTrend: "支出曲线",
     showRisk: "风险指标",
-    trendTitle: "支出曲线",
+    showDebug: "调试面板",
+    debugPanel: "调试面板",
+    debugOnlyFailed: "仅失败",
+    debugFilter: "过滤",
+    debugFilterPlaceholder: "accounts、dashboard、500",
+    debugCopy: "复制诊断",
+    debugClear: "清空",
+    debugRequests: "请求记录",
+    debugRuntime: "运行时错误",
+    debugNoRequests: "暂无请求诊断记录。",
+    debugNoRuntime: "暂无运行时错误。",
+    debugCopyDone: "诊断信息已复制",
+    debugCopyFailed: "复制失败",
+    refreshFailedAfterSave: "保存成功，但刷新失败。",
+    trendTitle: "📉 支出曲线",
     trendModeExpense: "每日支出",
     trendModeNetWorth: "净资产变化",
     trendFrom: "开始",
     trendTo: "结束",
     selectAccount: "选择账户",
-    advancedBudget: "高级预算",
-    accounts: "账户管理",
-    monthlyReview: "月度回顾",
-    categories: "分类管理",
-    aiProviders: "AI 提供商",
+    advancedBudget: "🧠 高级预算",
+    accounts: "🏦 账户管理",
+    monthlyReview: "🗓️ 月度回顾",
+    categories: "🧩 分类管理",
+    aiProviders: "🤖 AI 提供商",
     backToDashboard: "返回总览",
+    back: "返回",
+    edit: "编辑",
+    editAccount: "编辑账户",
+    saveAccount: "保存账户",
+    deleteAccount: "删除账户",
+    forceDeleteAccount: "强制删除（含关联交易）",
+    accountDeleteConfirm: "确认删除该账户？删除后不可恢复。",
+    accountForceDeleteConfirm: "强制删除该账户及其关联交易（{count}）？删除后不可恢复。",
+    accountUpdated: "账户已更新",
+    accountDeleted: "账户已删除",
+    accountForceDeleted: "账户及关联交易已删除",
     metricNetWorth: "净资产",
     metricLiquidCash: "流动现金",
     metricRestrictedCash: "受限现金",
@@ -273,6 +334,7 @@ document.addEventListener("DOMContentLoaded", () => {
   state.month = new Date().toISOString().slice(0, 7);
   $("#monthInput").value = state.month;
   bindUI();
+  initializeDebugCapture();
   initializeQuickEntryDefaults();
   loadAll();
 });
@@ -362,6 +424,15 @@ function bindUI() {
       applyAdvancedVisibility();
     });
   }
+  const toggleDebug = $("#toggleDebug");
+  if (toggleDebug) {
+    toggleDebug.addEventListener("change", () => {
+      state.ui.showDebug = toggleDebug.checked;
+      persistUiState();
+      applyAdvancedVisibility();
+      renderDebugPanel();
+    });
+  }
   for (const btn of document.querySelectorAll("[data-quick-type]")) {
     btn.addEventListener("click", () => {
       const type = String(btn.getAttribute("data-quick-type") || "expense");
@@ -385,7 +456,49 @@ function bindUI() {
   });
   $("#quickBudgetForm").addEventListener("submit", submitQuickBudgetForm);
   $("#quickSettingsForm").addEventListener("submit", submitQuickSettingsForm);
-  $("#closeUtilityBtn").addEventListener("click", closeUtilityPanel);
+  $("#accountEditForm").addEventListener("submit", submitAccountEditForm);
+  $("#accountDeleteBtn").addEventListener("click", deleteCurrentAccount);
+  $("#accountForceDeleteBtn").addEventListener("click", forceDeleteCurrentAccount);
+  $("#accountList").addEventListener("click", (event) => {
+    if (!(event.target instanceof Element)) return;
+    const editBtn = event.target.closest("button[data-action='edit-account']");
+    if (!editBtn) return;
+    const id = Number(editBtn.getAttribute("data-id"));
+    if (!Number.isInteger(id) || id <= 0) return;
+    openAccountEditSheet(id);
+  });
+  const debugOnlyFailed = $("#debugOnlyFailed");
+  if (debugOnlyFailed) {
+    debugOnlyFailed.addEventListener("change", () => {
+      state.debug.onlyFailed = debugOnlyFailed.checked;
+      renderDebugPanel();
+    });
+  }
+  const debugFilterInput = $("#debugFilterInput");
+  if (debugFilterInput) {
+    debugFilterInput.addEventListener("input", () => {
+      state.debug.filter = debugFilterInput.value.trim();
+      renderDebugPanel();
+    });
+  }
+  const debugCopyBtn = $("#debugCopyBtn");
+  if (debugCopyBtn) debugCopyBtn.addEventListener("click", copyDiagnosticsToClipboard);
+  const debugClearBtn = $("#debugClearBtn");
+  if (debugClearBtn) {
+    debugClearBtn.addEventListener("click", () => {
+      state.debug.requests = [];
+      state.debug.runtimeErrors = [];
+      renderDebugPanel();
+    });
+  }
+  $("#closeUtilityBtn").addEventListener("click", () => {
+    const returnSheet = state.utilityReturnSheet || "";
+    closeUtilityPanel();
+    if (returnSheet) {
+      state.utilityReturnSheet = "";
+      openSheet(returnSheet);
+    }
+  });
   for (const closer of document.querySelectorAll("[data-close-sheet]")) {
     closer.addEventListener("click", () => closeSheet(String(closer.getAttribute("data-close-sheet"))));
   }
@@ -393,6 +506,7 @@ function bindUI() {
     btn.addEventListener("click", () => {
       const target = String(btn.getAttribute("data-open-panel") || "");
       if (!target) return;
+      state.utilityReturnSheet = "settingsSheet";
       openUtilityPanel(target);
     });
   }
@@ -426,8 +540,38 @@ function bindUI() {
       }
       await loadProviders();
     } catch (error) {
-      showToast(error.message, true);
+      showErrorToast(error);
     }
+  });
+}
+
+function initializeDebugCapture() {
+  window.addEventListener("error", (event) => {
+    recordRuntimeError({
+      source: "window.onerror",
+      message: String(event.message || "Unknown runtime error"),
+      stack: event.error?.stack || "",
+      filename: event.filename || "",
+      line: Number(event.lineno || 0),
+      column: Number(event.colno || 0)
+    });
+  });
+  window.addEventListener("unhandledrejection", (event) => {
+    const reason = event.reason;
+    const message =
+      typeof reason?.message === "string"
+        ? reason.message
+        : typeof reason === "string"
+          ? reason
+          : "Unhandled promise rejection";
+    recordRuntimeError({
+      source: "unhandledrejection",
+      message,
+      stack: reason?.stack || "",
+      filename: "",
+      line: 0,
+      column: 0
+    });
   });
 }
 
@@ -448,8 +592,11 @@ function switchPanel(id) {
   }
 }
 
-function openSheet(id) {
-  closeUtilityPanel();
+function openSheet(id, options = {}) {
+  const preserveUtility = Boolean(options.preserveUtility);
+  if (!preserveUtility) {
+    closeUtilityPanel();
+  }
   const node = document.getElementById(id);
   if (!node) return;
   if (id === "quickEntrySheet") {
@@ -472,6 +619,7 @@ function openSheet(id) {
   }
   node.classList.remove("hidden");
   node.setAttribute("aria-hidden", "false");
+  syncSheetOpenState();
 }
 
 function closeSheet(id) {
@@ -479,6 +627,7 @@ function closeSheet(id) {
   if (!node) return;
   node.classList.add("hidden");
   node.setAttribute("aria-hidden", "true");
+  syncSheetOpenState();
 }
 
 function closeAllSheets() {
@@ -486,6 +635,14 @@ function closeAllSheets() {
     sheet.classList.add("hidden");
     sheet.setAttribute("aria-hidden", "true");
   }
+  syncSheetOpenState();
+}
+
+function syncSheetOpenState() {
+  const anyOpen = Array.from(document.querySelectorAll(".sheet")).some(
+    (sheet) => !sheet.classList.contains("hidden")
+  );
+  document.body.classList.toggle("sheet-open", anyOpen);
 }
 
 function openUtilityPanel(panelId) {
@@ -510,6 +667,7 @@ function closeUtilityPanel() {
   }
   const closeBtn = $("#closeUtilityBtn");
   if (closeBtn) closeBtn.classList.add("hidden");
+  state.utilityReturnSheet = "";
 }
 
 function syncControlState() {
@@ -519,25 +677,82 @@ function syncControlState() {
 }
 
 async function api(path, init = {}) {
+  const method = String(init.method || "GET").toUpperCase();
+  const clientRequestId = generateClientRequestId();
+  const startedAt = Date.now();
   const headers = {
     "x-user-id": String(state.userId),
+    "x-client-request-id": clientRequestId,
     ...(init.headers || {})
   };
   if (!headers["content-type"] && init.body !== undefined) {
     headers["content-type"] = "application/json";
   }
-  const res = await fetch(path, { ...init, headers });
+  let res;
+  try {
+    res = await fetch(path, { ...init, headers });
+  } catch (networkError) {
+    const durationMs = Date.now() - startedAt;
+    const message = String(networkError?.message || "Network request failed.");
+    recordRequestTrace({
+      time: new Date().toISOString(),
+      method,
+      path,
+      request_id: clientRequestId,
+      client_request_id: clientRequestId,
+      server_request_id: "",
+      status: 0,
+      duration_ms: durationMs,
+      ok: false,
+      error_message: message
+    });
+    const error = new Error(message);
+    error.requestId = clientRequestId;
+    error.status = 0;
+    throw error;
+  }
+  const durationMs = Date.now() - startedAt;
+  const serverRequestId = res.headers.get("x-request-id") || "";
+  const requestId = serverRequestId || clientRequestId;
+  const payload = await safeJson(res);
   if (!res.ok) {
-    const payload = await safeJson(res);
     const detail =
       typeof payload?.error === "string"
         ? payload.error
         : payload?.error
           ? JSON.stringify(payload.error)
           : `${res.status} ${res.statusText}`;
-    throw new Error(detail);
+    recordRequestTrace({
+      time: new Date().toISOString(),
+      method,
+      path,
+      request_id: requestId,
+      client_request_id: clientRequestId,
+      server_request_id: serverRequestId,
+      status: res.status,
+      duration_ms: durationMs,
+      ok: false,
+      error_message: detail
+    });
+    const error = new Error(detail);
+    error.requestId = requestId;
+    error.status = res.status;
+    error.payload = payload;
+    throw error;
   }
-  return safeJson(res);
+  recordRequestTrace({
+    time: new Date().toISOString(),
+    method,
+    path,
+    request_id: requestId,
+    client_request_id: clientRequestId,
+    server_request_id: serverRequestId,
+    status: res.status,
+    duration_ms: durationMs,
+    ok: true,
+    error_message: ""
+  });
+  return payload;
 }
 
 async function safeJson(res) {
@@ -567,6 +782,144 @@ function showToast(message, isError = false) {
   showToast._timer = setTimeout(() => toast.classList.add("hidden"), 2400);
 }
 
+function showErrorToast(error) {
+  showToast(formatErrorForToast(error), true);
+}
+
+function formatErrorForToast(error) {
+  const fallback = "Unknown error";
+  const message = String(error?.message || fallback);
+  const requestId = error?.requestId || "";
+  return requestId ? `[req:${requestId}] ${message}` : message;
+}
+
+function showRefreshFailureToast(error) {
+  const message = t("refreshFailedAfterSave");
+  const requestId = error?.requestId || "";
+  showToast(requestId ? `${message} [req:${requestId}]` : message, true);
+}
+
+function generateClientRequestId() {
+  const random = Math.random().toString(36).slice(2, 8);
+  return `c_${Date.now().toString(36)}_${random}`;
+}
+
+function recordRequestTrace(entry) {
+  state.debug.requests.unshift(entry);
+  if (state.debug.requests.length > state.debug.maxEntries) {
+    state.debug.requests = state.debug.requests.slice(0, state.debug.maxEntries);
+  }
+  renderDebugPanel();
+}
+
+function recordRuntimeError(entry) {
+  state.debug.runtimeErrors.unshift({
+    time: new Date().toISOString(),
+    source: entry.source || "runtime",
+    message: String(entry.message || "Runtime error"),
+    stack: String(entry.stack || ""),
+    filename: String(entry.filename || ""),
+    line: Number(entry.line || 0),
+    column: Number(entry.column || 0)
+  });
+  if (state.debug.runtimeErrors.length > state.debug.maxEntries) {
+    state.debug.runtimeErrors = state.debug.runtimeErrors.slice(0, state.debug.maxEntries);
+  }
+  renderDebugPanel();
+}
+
+function renderDebugPanel() {
+  const debugPanel = $("#debugPanel");
+  const requestList = $("#debugRequestList");
+  const runtimeList = $("#debugRuntimeList");
+  const countHint = $("#debugCountHint");
+  if (!debugPanel || !requestList || !runtimeList || !countHint) return;
+
+  const filterText = String(state.debug.filter || "").toLowerCase();
+  let requestRows = [...state.debug.requests];
+  if (state.debug.onlyFailed) {
+    requestRows = requestRows.filter((row) => !row.ok);
+  }
+  if (filterText) {
+    requestRows = requestRows.filter((row) =>
+      `${row.method} ${row.path} ${row.status} ${row.error_message} ${row.request_id}`
+        .toLowerCase()
+        .includes(filterText)
+    );
+  }
+  const runtimeRows = filterText
+    ? state.debug.runtimeErrors.filter((row) =>
+        `${row.source} ${row.message} ${row.stack}`.toLowerCase().includes(filterText)
+      )
+    : [...state.debug.runtimeErrors];
+
+  countHint.textContent = `${requestRows.length}/${state.debug.requests.length}`;
+  requestList.innerHTML = requestRows.length
+    ? requestRows
+        .map((row) => {
+          const cls = row.ok ? "debug-row" : "debug-row fail";
+          const statusLabel = row.ok ? "ok" : "fail";
+          return `
+            <article class="${cls}">
+              <div class="head">
+                <strong class="mono">${escapeHtml(row.method)} ${escapeHtml(String(row.status))}</strong>
+                <span class="muted">${escapeHtml(statusLabel)} · ${escapeHtml(String(row.duration_ms))}ms</span>
+              </div>
+              <div class="meta mono">${escapeHtml(row.path)}</div>
+              <div class="meta mono">req=${escapeHtml(row.request_id || "-")}</div>
+              ${row.error_message ? `<div class="meta">${escapeHtml(row.error_message)}</div>` : ""}
+            </article>
+          `;
+        })
+        .join("")
+    : `<div class="list-row muted">${escapeHtml(t("debugNoRequests"))}</div>`;
+
+  runtimeList.innerHTML = runtimeRows.length
+    ? runtimeRows
+        .map(
+          (row) => `
+            <article class="debug-row fail">
+              <div class="head">
+                <strong>${escapeHtml(row.source)}</strong>
+                <span class="muted">${escapeHtml(new Date(row.time).toLocaleTimeString())}</span>
+              </div>
+              <div class="meta">${escapeHtml(row.message)}</div>
+              ${
+                row.filename
+                  ? `<div class="meta mono">${escapeHtml(row.filename)}:${escapeHtml(
+                      String(row.line)
+                    )}:${escapeHtml(String(row.column))}</div>`
+                  : ""
+              }
+              ${row.stack ? `<div class="meta mono">${escapeHtml(row.stack.slice(0, 240))}</div>` : ""}
+            </article>
+          `
+        )
+        .join("")
+    : `<div class="list-row muted">${escapeHtml(t("debugNoRuntime"))}</div>`;
+}
+
+async function copyDiagnosticsToClipboard() {
+  const payload = {
+    generated_at: new Date().toISOString(),
+    user_id: state.userId,
+    requests: state.debug.requests,
+    runtime_errors: state.debug.runtimeErrors
+  };
+  const text = JSON.stringify(payload, null, 2);
+  try {
+    await navigator.clipboard.writeText(text);
+    showToast(t("debugCopyDone"));
+  } catch (error) {
+    showToast(t("debugCopyFailed"), true);
+    recordRuntimeError({
+      source: "clipboard",
+      message: String(error?.message || "Clipboard write failed."),
+      stack: error?.stack || ""
+    });
+  }
+}
+
 async function loadAll() {
   try {
     syncControlState();
@@ -583,7 +936,7 @@ async function loadAll() {
     await loadTrendData();
     showToast(t("loadedUser", { id: String(state.userId) }));
   } catch (error) {
-    showToast(error.message, true);
+    showErrorToast(error);
   }
 }
 
@@ -608,10 +961,17 @@ async function loadSettings() {
   const toggleCashFlow = $("#toggleCashFlow");
   const toggleRisk = $("#toggleRisk");
   const toggleTrend = $("#toggleTrend");
+  const toggleDebug = $("#toggleDebug");
+  const debugOnlyFailed = $("#debugOnlyFailed");
+  const debugFilterInput = $("#debugFilterInput");
   if (toggleCashFlow) toggleCashFlow.checked = Boolean(state.ui.showCashFlow);
   if (toggleRisk) toggleRisk.checked = Boolean(state.ui.showRisk);
   if (toggleTrend) toggleTrend.checked = Boolean(state.ui.showTrend);
+  if (toggleDebug) toggleDebug.checked = Boolean(state.ui.showDebug);
+  if (debugOnlyFailed) debugOnlyFailed.checked = Boolean(state.debug.onlyFailed);
+  if (debugFilterInput) debugFilterInput.value = state.debug.filter || "";
   applyAdvancedVisibility();
+  renderDebugPanel();
   applyI18n();
 }
 
@@ -930,7 +1290,9 @@ function handleTxTypeChange() {
 
 async function submitAccountForm(event) {
   event.preventDefault();
-  const fd = new FormData(event.currentTarget);
+  const form = event.currentTarget;
+  if (!(form instanceof HTMLFormElement)) return;
+  const fd = new FormData(form);
   try {
     await api("/api/v1/accounts", {
       method: "POST",
@@ -941,18 +1303,24 @@ async function submitAccountForm(event) {
         balance: Number(fd.get("balance") || "0")
       })
     });
-    event.currentTarget.reset();
-    $("#accountForm [name=currency]").value = "USD";
     showToast("Account created");
-    await Promise.all([loadAccounts(), loadDashboard()]);
+    try {
+      await Promise.all([loadAccounts(), loadDashboard()]);
+      form.reset();
+      $("#accountForm [name=currency]").value = "USD";
+    } catch (error) {
+      showRefreshFailureToast(error);
+    }
   } catch (error) {
-    showToast(error.message, true);
+    showErrorToast(error);
   }
 }
 
 async function submitTransactionForm(event) {
   event.preventDefault();
-  const fd = new FormData(event.currentTarget);
+  const form = event.currentTarget;
+  if (!(form instanceof HTMLFormElement)) return;
+  const fd = new FormData(form);
   const type = fd.get("type");
   const fxRaw = String(fd.get("fx_rate") || "").trim();
   const payload = {
@@ -983,18 +1351,24 @@ async function submitTransactionForm(event) {
   try {
     await api("/api/v1/transactions", { method: "POST", body: JSON.stringify(payload) });
     showToast("Transaction created");
-    $("#transactionForm [name=amount_original]").value = "";
-    $("#transactionForm [name=note]").value = "";
-    $("#transactionForm [name=tags]").value = "";
-    await refreshAfterLedgerChange();
+    try {
+      await refreshAfterLedgerChange();
+      $("#transactionForm [name=amount_original]").value = "";
+      $("#transactionForm [name=note]").value = "";
+      $("#transactionForm [name=tags]").value = "";
+    } catch (error) {
+      showRefreshFailureToast(error);
+    }
   } catch (error) {
-    showToast(error.message, true);
+    showErrorToast(error);
   }
 }
 
 async function submitQuickEntryForm(event) {
   event.preventDefault();
-  const fd = new FormData(event.currentTarget);
+  const form = event.currentTarget;
+  if (!(form instanceof HTMLFormElement)) return;
+  const fd = new FormData(form);
   const requestedAmount = Number(fd.get("amount_original"));
   const currencyCode = ensureUICurrency(String(fd.get("currency_original") || "USD").toUpperCase());
   if (!Number.isFinite(requestedAmount) || requestedAmount <= 0) {
@@ -1032,23 +1406,29 @@ async function submitQuickEntryForm(event) {
           ? t("saveTransfer")
           : t("expenseSaved")
     );
-    closeSheet("quickEntrySheet");
-    const amountInput = $("#quickEntryForm [name=amount_original]");
-    if (amountInput) amountInput.value = "0";
-    const wheel = $("#quickAmountWheel");
-    if (wheel) wheel.value = "0";
-    const display = $("#quickAmountDisplay");
-    if (display) display.textContent = "0.00";
-    validateQuickEntryAmount();
-    await refreshAfterLedgerChange();
+    try {
+      await refreshAfterLedgerChange();
+      closeSheet("quickEntrySheet");
+      const amountInput = $("#quickEntryForm [name=amount_original]");
+      if (amountInput) amountInput.value = "0";
+      const wheel = $("#quickAmountWheel");
+      if (wheel) wheel.value = "0";
+      const display = $("#quickAmountDisplay");
+      if (display) display.textContent = "0.00";
+      validateQuickEntryAmount();
+    } catch (error) {
+      showRefreshFailureToast(error);
+    }
   } catch (error) {
-    showToast(error.message, true);
+    showErrorToast(error);
   }
 }
 
 async function submitBudgetForm(event) {
   event.preventDefault();
-  const fd = new FormData(event.currentTarget);
+  const form = event.currentTarget;
+  if (!(form instanceof HTMLFormElement)) return;
+  const fd = new FormData(form);
   try {
     await api("/api/v1/budgets", {
       method: "POST",
@@ -1059,15 +1439,21 @@ async function submitBudgetForm(event) {
       })
     });
     showToast("Monthly budget saved");
-    await Promise.all([loadBudgets(), loadDashboard()]);
+    try {
+      await Promise.all([loadBudgets(), loadDashboard()]);
+    } catch (error) {
+      showRefreshFailureToast(error);
+    }
   } catch (error) {
-    showToast(error.message, true);
+    showErrorToast(error);
   }
 }
 
 async function submitQuickBudgetForm(event) {
   event.preventDefault();
-  const fd = new FormData(event.currentTarget);
+  const form = event.currentTarget;
+  if (!(form instanceof HTMLFormElement)) return;
+  const fd = new FormData(form);
   try {
     await api("/api/v1/budgets", {
       method: "POST",
@@ -1078,15 +1464,21 @@ async function submitQuickBudgetForm(event) {
       })
     });
     showToast(t("budgetUpdated"));
-    await Promise.all([loadBudgets(), loadDashboard()]);
+    try {
+      await Promise.all([loadBudgets(), loadDashboard()]);
+    } catch (error) {
+      showRefreshFailureToast(error);
+    }
   } catch (error) {
-    showToast(error.message, true);
+    showErrorToast(error);
   }
 }
 
 async function submitYearlyBudgetForm(event) {
   event.preventDefault();
-  const fd = new FormData(event.currentTarget);
+  const form = event.currentTarget;
+  if (!(form instanceof HTMLFormElement)) return;
+  const fd = new FormData(form);
   try {
     await api("/api/v1/budgets/yearly", {
       method: "POST",
@@ -1097,31 +1489,43 @@ async function submitYearlyBudgetForm(event) {
       })
     });
     showToast("Yearly budget saved");
-    await loadYearlyBudgets();
+    try {
+      await loadYearlyBudgets();
+    } catch (error) {
+      showRefreshFailureToast(error);
+    }
   } catch (error) {
-    showToast(error.message, true);
+    showErrorToast(error);
   }
 }
 
 async function submitL1Form(event) {
   event.preventDefault();
-  const fd = new FormData(event.currentTarget);
+  const form = event.currentTarget;
+  if (!(form instanceof HTMLFormElement)) return;
+  const fd = new FormData(form);
   try {
     await api("/api/v1/categories/l1", {
       method: "POST",
       body: JSON.stringify({ name: fd.get("name") })
     });
-    event.currentTarget.reset();
     showToast("L1 category created");
-    await loadCategories();
+    try {
+      await loadCategories();
+      form.reset();
+    } catch (error) {
+      showRefreshFailureToast(error);
+    }
   } catch (error) {
-    showToast(error.message, true);
+    showErrorToast(error);
   }
 }
 
 async function submitL2Form(event) {
   event.preventDefault();
-  const fd = new FormData(event.currentTarget);
+  const form = event.currentTarget;
+  if (!(form instanceof HTMLFormElement)) return;
+  const fd = new FormData(form);
   try {
     await api("/api/v1/categories/l2", {
       method: "POST",
@@ -1130,17 +1534,23 @@ async function submitL2Form(event) {
         name: fd.get("name")
       })
     });
-    event.currentTarget.reset();
     showToast("L2 category created");
-    await loadCategories();
+    try {
+      await loadCategories();
+      form.reset();
+    } catch (error) {
+      showRefreshFailureToast(error);
+    }
   } catch (error) {
-    showToast(error.message, true);
+    showErrorToast(error);
   }
 }
 
 async function submitSettingsForm(event) {
   event.preventDefault();
-  const fd = new FormData(event.currentTarget);
+  const form = event.currentTarget;
+  if (!(form instanceof HTMLFormElement)) return;
+  const fd = new FormData(form);
   try {
     await api("/api/v1/settings", {
       method: "PUT",
@@ -1151,15 +1561,21 @@ async function submitSettingsForm(event) {
       })
     });
     showToast(t("settingsUpdated"));
-    await Promise.all([loadSettings(), loadDashboard()]);
+    try {
+      await Promise.all([loadSettings(), loadDashboard(), loadBudgets(), loadYearlyBudgets()]);
+    } catch (error) {
+      showRefreshFailureToast(error);
+    }
   } catch (error) {
-    showToast(error.message, true);
+    showErrorToast(error);
   }
 }
 
 async function submitQuickSettingsForm(event) {
   event.preventDefault();
-  const fd = new FormData(event.currentTarget);
+  const form = event.currentTarget;
+  if (!(form instanceof HTMLFormElement)) return;
+  const fd = new FormData(form);
   const nextUserId = Math.max(1, Number(fd.get("user_id") || 1));
   $("#userIdInput").value = String(nextUserId);
   state.userId = nextUserId;
@@ -1174,15 +1590,21 @@ async function submitQuickSettingsForm(event) {
     });
     showToast(t("settingsUpdated"));
     closeSheet("settingsSheet");
-    await loadAll();
+    try {
+      await loadAll();
+    } catch (error) {
+      showRefreshFailureToast(error);
+    }
   } catch (error) {
-    showToast(error.message, true);
+    showErrorToast(error);
   }
 }
 
 async function submitProviderForm(event) {
   event.preventDefault();
-  const fd = new FormData(event.currentTarget);
+  const form = event.currentTarget;
+  if (!(form instanceof HTMLFormElement)) return;
+  const fd = new FormData(form);
   try {
     await api("/api/v1/ai/providers", {
       method: "POST",
@@ -1194,17 +1616,23 @@ async function submitProviderForm(event) {
         api_key: fd.get("api_key")
       })
     });
-    event.currentTarget.reset();
     showToast("Provider created");
-    await loadProviders();
+    try {
+      await loadProviders();
+      form.reset();
+    } catch (error) {
+      showRefreshFailureToast(error);
+    }
   } catch (error) {
-    showToast(error.message, true);
+    showErrorToast(error);
   }
 }
 
 async function submitCaptureTextForm(event) {
   event.preventDefault();
-  const fd = new FormData(event.currentTarget);
+  const form = event.currentTarget;
+  if (!(form instanceof HTMLFormElement)) return;
+  const fd = new FormData(form);
   try {
     const payload = await api("/api/v1/transactions/parse-text", {
       method: "POST",
@@ -1213,13 +1641,15 @@ async function submitCaptureTextForm(event) {
     setLatestExtraction(payload);
     showToast("Parsed with provider");
   } catch (error) {
-    showToast(error.message, true);
+    showErrorToast(error);
   }
 }
 
 async function submitCaptureImageForm(event) {
   event.preventDefault();
-  const fd = new FormData(event.currentTarget);
+  const form = event.currentTarget;
+  if (!(form instanceof HTMLFormElement)) return;
+  const fd = new FormData(form);
   try {
     const payload = await api("/api/v1/transactions/parse-image", {
       method: "POST",
@@ -1231,7 +1661,7 @@ async function submitCaptureImageForm(event) {
     setLatestExtraction(payload);
     showToast("OCR parsed with provider");
   } catch (error) {
-    showToast(error.message, true);
+    showErrorToast(error);
   }
 }
 
@@ -1260,7 +1690,7 @@ async function confirmLatestExtraction() {
     $("#extractionPreview").textContent = "";
     await refreshAfterLedgerChange();
   } catch (error) {
-    showToast(error.message, true);
+    showErrorToast(error);
   }
 }
 
@@ -1273,7 +1703,7 @@ async function generateMonthlyReview() {
     showToast("Monthly review snapshot generated");
     await loadReview();
   } catch (error) {
-    showToast(error.message, true);
+    showErrorToast(error);
   }
 }
 
@@ -1504,52 +1934,50 @@ function renderAccountComposition(dashboard) {
 }
 
 function renderPlannedBudgetCard(dashboard) {
-  const rows = dashboard.budget_status || [];
+  const monthlyRows = dashboard.budget_status || [];
+  const yearlyRows = dashboard.budget_status_yearly || [];
   const summary = $("#budgetPlanSummary");
   const list = $("#budgetPlanList");
   if (!summary || !list) return;
-  if (!rows.length) {
+  if (!monthlyRows.length && !yearlyRows.length) {
+    summary.classList.remove("hidden");
     summary.textContent = t("emptyNoBudgetMonth");
     list.innerHTML = "";
     return;
   }
-  const planned = rows.reduce((sum, row) => sum + Number(row.total_amount || 0), 0);
-  const spent = rows.reduce((sum, row) => sum + Number(row.spent_amount || 0), 0);
-  const remaining = planned - spent;
-  const base = dashboard.base_currency || state.settings?.base_currency || "USD";
-  summary.classList.add("budget-plan-summary");
-  summary.textContent = t("budgetPlanSummary", {
-    planned: `${formatMoney(planned)} ${base}`,
-    spent: `${formatMoney(spent)} ${base}`,
-    remaining: `${formatMoney(remaining)} ${base}`
-  });
+  summary.textContent = "";
+  summary.classList.add("hidden");
 
-  const topRows = [...rows]
-    .sort((a, b) => Number(b.spent_amount || 0) - Number(a.spent_amount || 0))
-    .slice(0, 4);
-  list.innerHTML = topRows
-    .map((row) => {
-      const total = Number(row.total_amount || 0);
-      const used = Number(row.spent_amount || 0);
-      const pct = total > 0 ? Math.min(100, (used / total) * 100) : 0;
-      const ratio = total > 0 ? used / total : 0;
-      const tone = ratio >= 1 ? "overspend" : ratio >= 0.8 ? "warn" : "normal";
-      return `
-        <article class="budget-plan-row">
-          <div class="top">
-            <div class="budget-plan-name">
-              <strong>${escapeHtml(withL1Emoji(row.category_l1))}</strong>
-              <span class="budget-plan-period muted">/ ${escapeHtml(t("periodMonthly"))}</span>
+  const renderRows = (rows, periodLabel, limit = 3) =>
+    [...rows]
+      .sort((a, b) => Number(b.spent_amount || 0) - Number(a.spent_amount || 0))
+      .slice(0, limit)
+      .map((row) => {
+        const total = Number(row.total_amount || 0);
+        const used = Number(row.spent_amount || 0);
+        const pct = total > 0 ? Math.min(100, (used / total) * 100) : 0;
+        const ratio = total > 0 ? used / total : 0;
+        const tone = ratio >= 1 ? "overspend" : ratio >= 0.8 ? "warn" : "normal";
+        return `
+          <article class="budget-plan-row">
+            <div class="top">
+              <div class="budget-plan-name">
+                <strong>${escapeHtml(withL1Emoji(row.category_l1))}</strong>
+                <span class="budget-plan-period muted">/ ${escapeHtml(periodLabel)}</span>
+              </div>
+              <span class="${row.overspend ? "overspend" : ratio >= 0.8 ? "warn" : "muted"}">${formatMoney(
+          used
+        )} / ${formatMoney(total)}</span>
             </div>
-            <span class="${row.overspend ? "overspend" : ratio >= 0.8 ? "warn" : "muted"}">${formatMoney(
-        used
-      )} / ${formatMoney(total)}</span>
-          </div>
-          <div class="progress-wrap"><div class="progress-fill ${tone}" style="width:${pct}%"></div></div>
-        </article>
-      `;
-    })
-    .join("");
+            <div class="progress-wrap"><div class="progress-fill ${tone}" style="width:${pct}%"></div></div>
+          </article>
+        `;
+      })
+      .join("");
+
+  const monthlyBlock = renderRows(monthlyRows, t("periodMonthly"));
+  const yearlyBlock = renderRows(yearlyRows, t("periodYearly"));
+  list.innerHTML = `${monthlyBlock}${yearlyBlock}`;
 }
 
 
@@ -1568,9 +1996,118 @@ function renderAccounts() {
           <span class="mono">${formatMoney(row.balance)} ${row.currency}</span>
         </div>
         <div class="muted">type: ${row.type}</div>
+        <div class="row-main">
+          <span class="muted mono">id: ${row.id}</span>
+          <button class="btn btn-ghost" type="button" data-action="edit-account" data-id="${row.id}">${escapeHtml(
+            t("edit")
+          )}</button>
+        </div>
       </article>`
     )
     .join("");
+}
+
+function openAccountEditSheet(accountId) {
+  const account = (state.accounts || []).find((row) => row.id === accountId);
+  if (!account) {
+    showToast("Account not found", true);
+    return;
+  }
+  state.editingAccountId = accountId;
+  const form = $("#accountEditForm");
+  if (!(form instanceof HTMLFormElement)) return;
+  form.elements.account_id.value = String(account.id);
+  form.elements.account_name.value = `${account.name} · ${account.currency}`;
+  form.elements.balance.value = String(Number(account.balance || 0));
+  openSheet("accountEditSheet", { preserveUtility: true });
+}
+
+async function submitAccountEditForm(event) {
+  event.preventDefault();
+  const form = event.currentTarget;
+  if (!(form instanceof HTMLFormElement)) return;
+  const fd = new FormData(form);
+  const accountId = Number(fd.get("account_id"));
+  const balance = Number(fd.get("balance"));
+  if (!Number.isInteger(accountId) || accountId <= 0 || !Number.isFinite(balance)) {
+    showToast(t("invalidAmount"), true);
+    return;
+  }
+  try {
+    await api(`/api/v1/accounts/${accountId}`, {
+      method: "PATCH",
+      body: JSON.stringify({ balance })
+    });
+    showToast(t("accountUpdated"));
+    try {
+      await refreshAfterLedgerChange();
+      closeSheet("accountEditSheet");
+    } catch (error) {
+      showRefreshFailureToast(error);
+    }
+  } catch (error) {
+    showErrorToast(error);
+  }
+}
+
+async function deleteCurrentAccount() {
+  const accountId = Number(state.editingAccountId || 0);
+  if (!Number.isInteger(accountId) || accountId <= 0) return;
+  if (!window.confirm(t("accountDeleteConfirm"))) return;
+  try {
+    await api(`/api/v1/accounts/${accountId}`, { method: "DELETE" });
+    showToast(t("accountDeleted"));
+    state.editingAccountId = null;
+    closeSheet("accountEditSheet");
+    try {
+      await refreshAfterLedgerChange();
+    } catch (error) {
+      showRefreshFailureToast(error);
+    }
+  } catch (error) {
+    if (Number(error?.status) === 409) {
+      showToast(formatErrorForToast(error), true);
+      return;
+    }
+    showErrorToast(error);
+  }
+}
+
+async function forceDeleteCurrentAccount() {
+  const accountId = Number(state.editingAccountId || 0);
+  if (!Number.isInteger(accountId) || accountId <= 0) return;
+  const linkedCount = await getLinkedTransactionCount(accountId);
+  if (
+    !window.confirm(
+      t("accountForceDeleteConfirm", {
+        count: String(linkedCount)
+      })
+    )
+  ) {
+    return;
+  }
+  try {
+    await api(`/api/v1/accounts/${accountId}?force=true`, { method: "DELETE" });
+    showToast(t("accountForceDeleted"));
+    state.editingAccountId = null;
+    closeSheet("accountEditSheet");
+    try {
+      await refreshAfterLedgerChange();
+    } catch (error) {
+      showRefreshFailureToast(error);
+    }
+  } catch (error) {
+    showErrorToast(error);
+  }
+}
+
+async function getLinkedTransactionCount(accountId) {
+  try {
+    const usage = await api(`/api/v1/accounts/${accountId}/usage`);
+    return Number(usage?.linked_transactions || 0);
+  } catch {
+    return 0;
+  }
 }
 
 function renderProviders() {
@@ -1873,13 +2410,29 @@ function applyI18n() {
   setText("toggleCashFlowLabel", t("showCashFlow"));
   setText("toggleTrendLabel", t("showTrend"));
   setText("toggleRiskLabel", t("showRisk"));
+  setText("toggleDebugLabel", t("showDebug"));
+  setText("debugPanelTitle", t("debugPanel"));
+  setText("debugOnlyFailedLabel", t("debugOnlyFailed"));
+  setText("debugFilterLabel", t("debugFilter"));
+  setText("debugCopyBtn", t("debugCopy"));
+  setText("debugClearBtn", t("debugClear"));
+  setText("debugRequestsTitle", t("debugRequests"));
+  setText("debugRuntimeTitle", t("debugRuntime"));
   setText("quickSettingsSaveBtn", t("saveSettings"));
   setText("settingsLinkBudget", t("advancedBudget"));
   setText("settingsLinkAccounts", t("accounts"));
   setText("settingsLinkReview", t("monthlyReview"));
   setText("settingsLinkCategories", t("categories"));
   setText("settingsLinkAi", t("aiProviders"));
-  setText("closeUtilityBtn", t("backToDashboard"));
+  setText("accountEditTitle", t("editAccount"));
+  setText("accountEditNameLabel", t("account"));
+  setText("accountEditBalanceLabel", t("amount"));
+  setText("accountEditSaveBtn", t("saveAccount"));
+  setText("accountDeleteBtn", t("deleteAccount"));
+  setText("accountForceDeleteBtn", t("forceDeleteAccount"));
+  setText("closeUtilityBtn", "←");
+  const utilityBtn = $("#closeUtilityBtn");
+  if (utilityBtn) utilityBtn.setAttribute("aria-label", t("back"));
   const quickNote = document.querySelector("#quickEntryForm [name=note]");
   if (quickNote) {
     quickNote.placeholder = ensureUILanguage(state.settings?.ui_language) === "zh" ? "可选" : "optional";
@@ -1901,15 +2454,22 @@ function applyI18n() {
       button.textContent = t("close");
     }
   }
+  const debugFilterInput = $("#debugFilterInput");
+  if (debugFilterInput) {
+    debugFilterInput.placeholder = t("debugFilterPlaceholder");
+  }
+  renderDebugPanel();
 }
 
 function applyAdvancedVisibility() {
   const cashFlow = $("#cashFlowCard");
   const trendCard = $("#trendCard");
   const riskCard = $("#riskCard");
+  const debugPanel = $("#debugPanel");
   if (cashFlow) cashFlow.classList.toggle("hidden", !state.ui.showCashFlow);
   if (trendCard) trendCard.classList.toggle("hidden", !state.ui.showTrend);
   if (riskCard) riskCard.classList.toggle("hidden", !state.ui.showRisk);
+  if (debugPanel) debugPanel.classList.toggle("hidden", !state.ui.showDebug);
 }
 
 function loadUiState() {
@@ -1920,6 +2480,11 @@ function loadUiState() {
     state.ui.showCashFlow = Boolean(parsed.showCashFlow);
     state.ui.showTrend = Boolean(parsed.showTrend);
     state.ui.showRisk = Boolean(parsed.showRisk);
+    state.ui.showDebug = Boolean(parsed.showDebug);
+    if (parsed.debug) {
+      state.debug.onlyFailed = Boolean(parsed.debug.onlyFailed);
+      state.debug.filter = String(parsed.debug.filter || "");
+    }
     if (parsed.trend) {
       state.trend.start = parsed.trend.start || state.trend.start;
       state.trend.end = parsed.trend.end || state.trend.end;
@@ -1938,10 +2503,15 @@ function persistUiState() {
         showCashFlow: state.ui.showCashFlow,
         showTrend: state.ui.showTrend,
         showRisk: state.ui.showRisk,
+        showDebug: state.ui.showDebug,
         trend: {
           start: state.trend.start,
           end: state.trend.end,
           mode: state.trend.mode
+        },
+        debug: {
+          onlyFailed: state.debug.onlyFailed,
+          filter: state.debug.filter
         }
       })
     );
