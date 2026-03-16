@@ -200,6 +200,9 @@ const I18N = {
     emptyNoMonthlyBudget: "No monthly budgets.",
     emptyNoYearlyBudget: "No yearly budgets.",
     emptyNoQuickBudget: "No budgets yet.",
+    relativeToday: "Today",
+    relativeDayAgo: "{days} day ago",
+    relativeDaysAgo: "{days} days ago",
     remaining: "Remaining",
     original: "original",
     reason: "reason",
@@ -340,6 +343,9 @@ const I18N = {
     emptyNoMonthlyBudget: "暂无月度预算。",
     emptyNoYearlyBudget: "暂无年度预算。",
     emptyNoQuickBudget: "还没有预算数据。",
+    relativeToday: "今天",
+    relativeDayAgo: "{days}天前",
+    relativeDaysAgo: "{days}天前",
     remaining: "剩余",
     original: "原始",
     reason: "原因",
@@ -376,6 +382,15 @@ function bindUI() {
   $("#reloadBtn").addEventListener("click", async () => {
     syncControlState();
     await loadAll();
+  });
+  $("#monthInput").addEventListener("change", async () => {
+    syncControlState();
+    await loadAll();
+  });
+  $("#topBaseCurrencySelect").addEventListener("change", async (event) => {
+    const select = event.currentTarget;
+    if (!(select instanceof HTMLSelectElement)) return;
+    await switchTopBaseCurrency(select.value);
   });
   $("#applyTxFilterBtn").addEventListener("click", async () => {
     state.txTagFilter = $("#transactionTagFilter").value.trim();
@@ -1058,6 +1073,7 @@ async function loadSettings() {
   $("#quickSettingsForm [name=timezone]").value = state.settings.timezone || "UTC";
   $("#quickSettingsForm [name=user_id]").value = String(state.userId);
   $("#quickEntryForm [name=currency_original]").value = uiBase;
+  $("#topBaseCurrencySelect").value = uiBase;
   const toggleCashFlow = $("#toggleCashFlow");
   const toggleRisk = $("#toggleRisk");
   const toggleTrend = $("#toggleTrend");
@@ -1075,6 +1091,28 @@ async function loadSettings() {
   applyAdvancedVisibility();
   renderDebugPanel();
   applyI18n();
+}
+
+async function switchTopBaseCurrency(nextBase) {
+  const target = ensureUICurrency(nextBase || "USD");
+  const current = ensureUICurrency(state.settings?.base_currency || "USD");
+  if (target === current) return;
+  try {
+    await api("/api/v1/settings", {
+      method: "PUT",
+      body: JSON.stringify({
+        base_currency: target,
+        timezone: state.settings?.timezone || "UTC",
+        ui_language: ensureUILanguage(state.settings?.ui_language || "en")
+      })
+    });
+    showToast(t("settingsUpdated"));
+    await loadAll();
+  } catch (error) {
+    const select = $("#topBaseCurrencySelect");
+    if (select) select.value = current;
+    showErrorToast(error);
+  }
 }
 
 async function loadCategories() {
@@ -2449,13 +2487,39 @@ function renderRecentExpensesCard(rows) {
           <span class="mono">${formatMoney(row.amount_base)} ${escapeHtml(base)}</span>
         </div>
         <div class="row-main">
-          <span class="muted">${escapeHtml(row.tx_date)}</span>
+          <span class="muted">${escapeHtml(formatRecentExpenseDate(row.tx_date))}</span>
           <span class="muted">${formatMoney(row.amount_original)} ${escapeHtml(row.currency_original || "-")}</span>
         </div>
         <div>${escapeHtml(row.note || "")}</div>
       </article>`
     )
     .join("");
+}
+
+function formatRecentExpenseDate(txDate) {
+  const dateText = String(txDate || "");
+  const dateObj = parseDateOnlyLocal(dateText);
+  if (!dateObj) return dateText;
+  const now = new Date();
+  const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+  const diffDays = Math.floor((today.getTime() - dateObj.getTime()) / 86400000);
+  if (diffDays === 0) return `${dateText} ${t("relativeToday")}`;
+  if (diffDays > 0 && diffDays < 3) {
+    const relative = diffDays === 1 ? t("relativeDayAgo", { days: diffDays }) : t("relativeDaysAgo", { days: diffDays });
+    return `${dateText} ${relative}`;
+  }
+  return dateText;
+}
+
+function parseDateOnlyLocal(value) {
+  const text = String(value || "");
+  const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(text);
+  if (!match) return null;
+  const year = Number(match[1]);
+  const month = Number(match[2]);
+  const day = Number(match[3]);
+  if (!Number.isInteger(year) || !Number.isInteger(month) || !Number.isInteger(day)) return null;
+  return new Date(year, month - 1, day);
 }
 
 async function loadBudgets() {

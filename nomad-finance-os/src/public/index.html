@@ -14,21 +14,25 @@
   </head>
   <body>
     <div class="noise"></div>
-    <header class="topbar">
-      <div class="brand-block">
-        <p class="eyebrow" id="eyebrowText">MVP</p>
-        <h1>Nomad Finance OS</h1>
-        <p class="subtitle" id="subtitleText">A simpler daily money cockpit.</p>
-      </div>
-      <div class="quick-actions">
-        <label class="month-pill">
-          <span id="monthLabelText">Month</span>
-          <input id="monthInput" type="month" />
-        </label>
-        <button id="openSettingsBtn" class="icon-btn" type="button" aria-label="Open settings">⚙</button>
-        <input id="userIdInput" type="number" min="1" value="1" hidden />
-        <button id="reloadBtn" class="hidden" type="button">Reload</button>
-      </div>
+    <header class="topbar minimal-topbar">
+      <button id="openSettingsBtn" class="icon-btn topbar-icon" type="button" aria-label="Open settings">⚙</button>
+      <label class="topbar-month">
+        <span id="monthLabelText" class="sr-only">Month</span>
+        <input id="monthInput" type="month" aria-label="Month" />
+      </label>
+      <label class="topbar-base">
+        <span id="topBaseCurrencyLabel" class="sr-only">Base Currency</span>
+        <select id="topBaseCurrencySelect" aria-label="Base Currency">
+          <option value="CNY">CNY</option>
+          <option value="EUR">EUR</option>
+          <option value="THB">THB</option>
+          <option value="USD" selected>USD</option>
+          <option value="JPY">JPY</option>
+          <option value="KRW">KRW</option>
+        </select>
+      </label>
+      <input id="userIdInput" type="number" min="1" value="1" hidden />
+      <button id="reloadBtn" class="hidden" type="button">Reload</button>
     </header>
 
     <nav class="tabs" aria-label="Panels">
