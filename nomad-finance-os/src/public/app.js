@@ -27,7 +27,8 @@ const state = {
     showTrend: false,
     showRisk: false,
     showRecentExpenses: true,
-    showDebug: false
+    showDebug: false,
+    budgetPieView: false
   },
   debug: {
     requests: [],
@@ -35,6 +36,21 @@ const state = {
     onlyFailed: false,
     filter: "",
     maxEntries: 100
+  },
+  quickPreferences: {
+    expense: {
+      account_from_id: "",
+      currency_original: ""
+    },
+    income: {
+      account_to_id: "",
+      currency_original: ""
+    },
+    transfer: {
+      account_from_id: "",
+      account_to_id: "",
+      currency_original: ""
+    }
   }
 };
 
@@ -89,6 +105,11 @@ const I18N = {
     recentExpenses: "🧾 Recent Expenses",
     viewAllExpenses: "View All",
     budgetPlanSummary: "Planned {planned} · Spent {spent} · Remaining {remaining}",
+    budgetViewToggleToPie: "Show pie view",
+    budgetViewToggleToList: "Show list view",
+    budgetPieCenterLabel: "Spent",
+    budgetPieEmpty: "No spent budget yet.",
+    budgetPieOther: "Other",
     periodMonthly: "month",
     periodYearly: "yearly",
     editBudget: "Edit Budget",
@@ -111,6 +132,8 @@ const I18N = {
     fxRateOptional: "FX Rate (optional)",
     amount: "Amount",
     amountWheel: "Amount Wheel",
+    quickDateHint: "Default: payment date",
+    quickDateToggle: "Date",
     note: "Note",
     tagsLabel: "Tags",
     saveExpense: "Save Expense",
@@ -233,6 +256,11 @@ const I18N = {
     recentExpenses: "🧾 最近消费",
     viewAllExpenses: "查看全部",
     budgetPlanSummary: "计划 {planned} · 已花 {spent} · 剩余 {remaining}",
+    budgetViewToggleToPie: "切换为饼图",
+    budgetViewToggleToList: "切换为列表",
+    budgetPieCenterLabel: "已花",
+    budgetPieEmpty: "暂无已花预算数据。",
+    budgetPieOther: "其他",
     periodMonthly: "月",
     periodYearly: "每年",
     editBudget: "编辑预算",
@@ -255,6 +283,8 @@ const I18N = {
     fxRateOptional: "汇率（可选）",
     amount: "金额",
     amountWheel: "金额滚轮",
+    quickDateHint: "默认使用支付日期",
+    quickDateToggle: "日期",
     note: "备注",
     tagsLabel: "标签",
     saveExpense: "保存支出",
@@ -372,6 +402,7 @@ const $ = (selector) => document.querySelector(selector);
 document.addEventListener("DOMContentLoaded", () => {
   state.month = new Date().toISOString().slice(0, 7);
   $("#monthInput").value = state.month;
+  loadQuickEntryPreferences();
   bindUI();
   initializeDebugCapture();
   initializeQuickEntryDefaults();
@@ -490,10 +521,47 @@ function bindUI() {
       applyAdvancedVisibility();
     });
   }
+  const budgetViewToggleBtn = $("#budgetPlanViewToggleBtn");
+  if (budgetViewToggleBtn) {
+    budgetViewToggleBtn.addEventListener("click", () => {
+      state.ui.budgetPieView = !state.ui.budgetPieView;
+      persistUiState();
+      if (state.dashboard) renderPlannedBudgetCard(state.dashboard);
+    });
+  }
   for (const btn of document.querySelectorAll("[data-quick-type]")) {
     btn.addEventListener("click", () => {
       const type = String(btn.getAttribute("data-quick-type") || "expense");
       setQuickEntryType(type);
+    });
+  }
+  const quickL1Grid = $("#quickL1Grid");
+  if (quickL1Grid) {
+    quickL1Grid.addEventListener("click", (event) => {
+      if (!(event.target instanceof Element)) return;
+      const optionBtn = event.target.closest("button[data-l1]");
+      if (!optionBtn) return;
+      const encoded = String(optionBtn.getAttribute("data-l1") || "");
+      const value = decodeURIComponent(encoded || "");
+      const select = $("#quickEntryForm [name=category_l1]");
+      if (!select) return;
+      select.value = value;
+      populateQuickEntryL2();
+    });
+  }
+  const quickL2Grid = $("#quickL2Grid");
+  if (quickL2Grid) {
+    quickL2Grid.addEventListener("click", (event) => {
+      if (!(event.target instanceof Element)) return;
+      const optionBtn = event.target.closest("button[data-l2]");
+      if (!optionBtn) return;
+      const encoded = String(optionBtn.getAttribute("data-l2") || "");
+      const value = decodeURIComponent(encoded || "");
+      const select = $("#quickEntryForm [name=category_l2]");
+      if (!select) return;
+      select.value = value;
+      void updateQuickEntryFlow();
+      renderQuickL2Grid();
     });
   }
   $("#quickEntryForm [name=category_l1]").addEventListener("change", () => {
@@ -503,14 +571,35 @@ function bindUI() {
     void updateQuickEntryFlow();
   });
   $("#quickEntryForm [name=account_from_id]").addEventListener("change", () => {
+    rememberQuickEntryPreferences();
     void updateQuickEntryFlow();
   });
   $("#quickEntryForm [name=account_to_id]").addEventListener("change", () => {
+    rememberQuickEntryPreferences();
     void updateQuickEntryFlow();
   });
   $("#quickEntryForm [name=currency_original]").addEventListener("change", () => {
+    rememberQuickEntryPreferences();
     void updateQuickEntryFlow();
   });
+  $("#quickEntryForm [name=date]").addEventListener("change", () => {
+    updateQuickDateDisplay();
+  });
+  const quickDateToggleBtn = $("#quickDateToggleBtn");
+  if (quickDateToggleBtn) {
+    quickDateToggleBtn.addEventListener("click", () => {
+      const dateInput = $("#quickEntryForm [name=date]");
+      if (dateInput && typeof dateInput.showPicker === "function") {
+        dateInput.showPicker();
+        return;
+      }
+      const wrap = $("#quickDateWrap");
+      if (!wrap) return;
+      const nextHidden = !wrap.classList.contains("hidden");
+      wrap.classList.toggle("hidden", nextHidden);
+      if (!nextHidden && dateInput) dateInput.focus();
+    });
+  }
   $("#quickBudgetForm").addEventListener("submit", submitQuickBudgetForm);
   $("#quickSettingsForm").addEventListener("submit", submitQuickSettingsForm);
   $("#accountEditForm").addEventListener("submit", submitAccountEditForm);
@@ -659,6 +748,7 @@ function initializeQuickEntryDefaults() {
   const today = new Date().toISOString().slice(0, 10);
   const dateInput = $("#quickEntryForm [name=date]");
   if (dateInput) dateInput.value = today;
+  updateQuickDateDisplay();
   const budgetMonth = $("#quickBudgetForm [name=month]");
   if (budgetMonth) budgetMonth.value = state.month;
 }
@@ -712,11 +802,13 @@ function openSheet(id, options = {}) {
   if (!node) return;
   if (id === "quickEntrySheet") {
     const dateInput = $("#quickEntryForm [name=date]");
-    if (dateInput && !dateInput.value) dateInput.value = new Date().toISOString().slice(0, 10);
-    const currencyInput = $("#quickEntryForm [name=currency_original]");
-    if (currencyInput && state.settings?.base_currency) {
-      currencyInput.value = ensureUICurrency(state.settings.base_currency);
-    }
+    if (dateInput) dateInput.value = new Date().toISOString().slice(0, 10);
+    updateQuickDateDisplay();
+    const dateWrap = $("#quickDateWrap");
+    if (dateWrap) dateWrap.classList.add("hidden");
+    const amountInput = $("#quickEntryForm [name=amount_original]");
+    if (amountInput) amountInput.value = "0";
+    syncQuickAmountDisplay(0);
     setQuickEntryType(state.quickEntryType || "expense");
     void updateQuickEntryFlow();
   }
@@ -1072,7 +1164,6 @@ async function loadSettings() {
   $("#quickSettingsForm [name=base_currency]").value = uiBase;
   $("#quickSettingsForm [name=timezone]").value = state.settings.timezone || "UTC";
   $("#quickSettingsForm [name=user_id]").value = String(state.userId);
-  $("#quickEntryForm [name=currency_original]").value = uiBase;
   $("#topBaseCurrencySelect").value = uiBase;
   const toggleCashFlow = $("#toggleCashFlow");
   const toggleRisk = $("#toggleRisk");
@@ -1088,6 +1179,7 @@ async function loadSettings() {
   if (toggleRecentExpenses) toggleRecentExpenses.checked = Boolean(state.ui.showRecentExpenses);
   if (debugOnlyFailed) debugOnlyFailed.checked = Boolean(state.debug.onlyFailed);
   if (debugFilterInput) debugFilterInput.value = state.debug.filter || "";
+  applyQuickEntryPreferencesForType(state.quickEntryType || "expense");
   applyAdvancedVisibility();
   renderDebugPanel();
   applyI18n();
@@ -1228,6 +1320,10 @@ function populateQuickEntryL1() {
   for (const name of activeL1) {
     select.appendChild(new Option(withL1Emoji(name), name));
   }
+  if (activeL1.length && !select.value) {
+    select.value = activeL1[0];
+  }
+  renderQuickL1Grid();
   populateQuickEntryL2();
 }
 
@@ -1242,7 +1338,55 @@ function populateQuickEntryL2() {
     if (!row.active) continue;
     l2Select.appendChild(new Option(withL2Emoji(row.name), row.name));
   }
+  if (l2Select.options.length && !l2Select.value) {
+    l2Select.value = l2Select.options[0].value;
+  }
+  renderQuickL1Grid();
+  renderQuickL2Grid();
   void updateQuickEntryFlow();
+}
+
+function renderQuickL1Grid() {
+  const grid = $("#quickL1Grid");
+  const l1Select = $("#quickEntryForm [name=category_l1]");
+  if (!grid || !l1Select) return;
+  const activeL1 = Object.entries(state.categories || {})
+    .filter(([, cfg]) => cfg.active)
+    .map(([name]) => name);
+  const selected = String(l1Select.value || "");
+  grid.innerHTML = activeL1
+    .map((name) => {
+      const isActive = name === selected;
+      return `
+        <button class="quick-icon-btn ${isActive ? "active" : ""}" type="button" data-l1="${encodeURIComponent(name)}">
+          <span class="icon">${escapeHtml(CATEGORY_L1_EMOJI[name] || "🏷️")}</span>
+          <span class="label">${escapeHtml(name)}</span>
+        </button>
+      `;
+    })
+    .join("");
+}
+
+function renderQuickL2Grid() {
+  const grid = $("#quickL2Grid");
+  const l1Select = $("#quickEntryForm [name=category_l1]");
+  const l2Select = $("#quickEntryForm [name=category_l2]");
+  if (!grid || !l1Select || !l2Select) return;
+  const l1 = String(l1Select.value || "");
+  const rows = (state.categories?.[l1]?.l2 || []).filter((row) => row.active);
+  const selected = String(l2Select.value || "");
+  grid.innerHTML = rows
+    .map((row) => {
+      const label = String(row.name || "");
+      const isActive = label === selected;
+      return `
+        <button class="quick-icon-btn ${isActive ? "active" : ""}" type="button" data-l2="${encodeURIComponent(label)}">
+          <span class="icon">${escapeHtml(CATEGORY_L2_EMOJI[label] || "🔹")}</span>
+          <span class="label">${escapeHtml(label)}</span>
+        </button>
+      `;
+    })
+    .join("");
 }
 
 function populateQuickEntryAccounts() {
@@ -1261,6 +1405,7 @@ function populateQuickEntryAccounts() {
       selectTo.appendChild(new Option(label, String(account.id)));
     }
   }
+  applyQuickEntryPreferencesForType(state.quickEntryType || "expense");
   void updateQuickEntryFlow();
 }
 
@@ -1277,29 +1422,43 @@ function populateQuickBudgetL1() {
 }
 
 function setupQuickAmountWheel() {
-  const wheel = $("#quickAmountWheel");
+  const keypad = $("#quickKeypad");
   const amountInput = $("#quickEntryForm [name=amount_original]");
-  const amountDisplay = $("#quickAmountDisplay");
-  if (!wheel || !amountInput || !amountDisplay) return;
-  let lastVibeAt = 0;
-  wheel.addEventListener("input", () => {
-    const numeric = clampQuickAmount(wheel.value);
-    amountInput.value = String(numeric);
-    syncQuickAmountDisplay(numeric);
-    validateQuickEntryAmount();
-    const now = Date.now();
-    if (navigator.vibrate && now - lastVibeAt > 24) {
-      navigator.vibrate(8);
-      lastVibeAt = now;
-    }
-  });
+  if (!amountInput) return;
   amountInput.addEventListener("input", () => {
+    amountInput.value = sanitizeQuickAmountText(amountInput.value);
     const numeric = clampQuickAmount(amountInput.value);
-    amountInput.value = String(numeric);
-    wheel.value = String(Math.round(numeric));
-    syncQuickAmountDisplay(numeric);
+    syncQuickAmountDisplay(Number.isFinite(numeric) ? numeric : 0);
     validateQuickEntryAmount();
   });
+  if (keypad) {
+    keypad.addEventListener("click", (event) => {
+      if (!(event.target instanceof Element)) return;
+      const keyBtn = event.target.closest("button[data-keypad]");
+      if (!keyBtn) return;
+      const key = String(keyBtn.getAttribute("data-keypad") || "");
+      const currentText = sanitizeQuickAmountText(amountInput.value);
+      let nextText = currentText;
+      if (key === "back") {
+        nextText = currentText.slice(0, -1);
+      } else if (key === "clear") {
+        nextText = "";
+      } else if (key === ".") {
+        if (!currentText.includes(".")) nextText = currentText ? `${currentText}.` : "0.";
+      } else if (/^\d+$/.test(key)) {
+        nextText = `${currentText}${key}`;
+      }
+      nextText = sanitizeQuickAmountText(nextText);
+      const numeric = clampQuickAmount(nextText);
+      amountInput.value = nextText || "";
+      if (numeric > Number(state.quickEntryMax || 0) && Number(state.quickEntryMax || 0) > 0) {
+        amountInput.value = String(state.quickEntryMax);
+      }
+      syncQuickAmountDisplay(amountInput.value || 0);
+      validateQuickEntryAmount();
+      if (navigator.vibrate) navigator.vibrate(8);
+    });
+  }
   syncQuickAmountDisplay(amountInput.value || 0);
 }
 
@@ -1324,6 +1483,7 @@ async function updateQuickEntryFlow() {
       : Boolean(accountId && accountToId && currency);
   const amountStepVisible = isExpense ? Boolean(l1 && l2 && spendReady) : spendReady;
   toggleQuickStep("quickStepAmount", amountStepVisible);
+  syncQuickComposerVisibility();
 
   if (!amountStepVisible) {
     applyQuickEntryMax(0, currency);
@@ -1333,7 +1493,7 @@ async function updateQuickEntryFlow() {
   if (isExpense || isTransfer) {
     await refreshQuickEntryAmountLimit(accountId, currency);
   } else {
-    applyQuickEntryMax(50000, currency);
+    applyQuickEntryMax(99999999, currency);
   }
 }
 
@@ -1341,6 +1501,15 @@ function toggleQuickStep(id, visible) {
   const node = document.getElementById(id);
   if (!node) return;
   node.classList.toggle("hidden", !visible);
+}
+
+function syncQuickComposerVisibility() {
+  const composer = $("#quickComposerCard");
+  const spend = $("#quickStepSpend");
+  const amount = $("#quickStepAmount");
+  if (!composer || !spend || !amount) return;
+  const show = !spend.classList.contains("hidden") || !amount.classList.contains("hidden");
+  composer.classList.toggle("hidden", !show);
 }
 
 function setQuickEntryType(type) {
@@ -1366,8 +1535,117 @@ function setQuickEntryType(type) {
   if (l1Select) l1Select.toggleAttribute("required", next === "expense");
   if (l2Select) l2Select.toggleAttribute("required", next === "expense");
 
+  applyQuickEntryPreferencesForType(next);
   applyI18n();
+  renderQuickL1Grid();
+  renderQuickL2Grid();
   void updateQuickEntryFlow();
+}
+
+function applyQuickEntryPreferencesForType(type) {
+  const mode = type === "income" || type === "transfer" ? type : "expense";
+  const prefs = state.quickPreferences?.[mode] || {};
+  const baseCurrency = ensureUICurrency(state.settings?.base_currency || "USD");
+  const currencySelect = $("#quickEntryForm [name=currency_original]");
+  if (currencySelect) {
+    const preferredCurrency = ensureUICurrency(prefs.currency_original || baseCurrency);
+    setSelectValueIfExists(currencySelect, preferredCurrency);
+  }
+  if (mode === "expense") {
+    const from = $("#quickEntryForm [name=account_from_id]");
+    if (from) setSelectValueIfExists(from, prefs.account_from_id || "");
+  } else if (mode === "income") {
+    const to = $("#quickEntryForm [name=account_to_id]");
+    if (to) setSelectValueIfExists(to, prefs.account_to_id || "");
+  } else {
+    const from = $("#quickEntryForm [name=account_from_id]");
+    const to = $("#quickEntryForm [name=account_to_id]");
+    if (from) setSelectValueIfExists(from, prefs.account_from_id || "");
+    if (to) setSelectValueIfExists(to, prefs.account_to_id || "");
+  }
+}
+
+function rememberQuickEntryPreferences() {
+  const mode = state.quickEntryType === "income" || state.quickEntryType === "transfer" ? state.quickEntryType : "expense";
+  const currency = ensureUICurrency($("#quickEntryForm [name=currency_original]")?.value || "USD");
+  const fromValue = String($("#quickEntryForm [name=account_from_id]")?.value || "");
+  const toValue = String($("#quickEntryForm [name=account_to_id]")?.value || "");
+  if (mode === "expense") {
+    state.quickPreferences.expense = {
+      ...state.quickPreferences.expense,
+      account_from_id: fromValue,
+      currency_original: currency
+    };
+  } else if (mode === "income") {
+    state.quickPreferences.income = {
+      ...state.quickPreferences.income,
+      account_to_id: toValue,
+      currency_original: currency
+    };
+  } else {
+    state.quickPreferences.transfer = {
+      ...state.quickPreferences.transfer,
+      account_from_id: fromValue,
+      account_to_id: toValue,
+      currency_original: currency
+    };
+  }
+  persistQuickEntryPreferences();
+}
+
+function setSelectValueIfExists(selectEl, value) {
+  if (!(selectEl instanceof HTMLSelectElement)) return;
+  const text = String(value || "");
+  if (!text) return;
+  const hasOption = Array.from(selectEl.options).some((opt) => String(opt.value) === text);
+  if (hasOption) selectEl.value = text;
+}
+
+function loadQuickEntryPreferences() {
+  try {
+    const raw = localStorage.getItem("nfos_quick_entry_preferences");
+    if (!raw) return;
+    const parsed = JSON.parse(raw);
+    const next = {
+      expense: {
+        account_from_id: String(parsed?.expense?.account_from_id || ""),
+        currency_original: ensureUICurrency(parsed?.expense?.currency_original || "USD")
+      },
+      income: {
+        account_to_id: String(parsed?.income?.account_to_id || ""),
+        currency_original: ensureUICurrency(parsed?.income?.currency_original || "USD")
+      },
+      transfer: {
+        account_from_id: String(parsed?.transfer?.account_from_id || ""),
+        account_to_id: String(parsed?.transfer?.account_to_id || ""),
+        currency_original: ensureUICurrency(parsed?.transfer?.currency_original || "USD")
+      }
+    };
+    state.quickPreferences = next;
+  } catch {
+    // ignore localStorage errors
+  }
+}
+
+function persistQuickEntryPreferences() {
+  try {
+    localStorage.setItem("nfos_quick_entry_preferences", JSON.stringify(state.quickPreferences));
+  } catch {
+    // ignore localStorage errors
+  }
+}
+
+function updateQuickDateDisplay() {
+  const dateInput = $("#quickEntryForm [name=date]");
+  const textEl = $("#quickDateToggleText");
+  if (!dateInput || !textEl) return;
+  const today = new Date().toISOString().slice(0, 10);
+  const date = String(dateInput.value || today);
+  if (date === today) {
+    textEl.textContent = `${t("quickDateToggle")} · ${t("relativeToday")}`;
+    return;
+  }
+  textEl.textContent = `${t("quickDateToggle")} · ${date}`;
 }
 
 async function refreshQuickEntryAmountLimit(accountId, currency) {
@@ -1406,18 +1684,14 @@ async function getFxRateCached(from, to) {
 
 function applyQuickEntryMax(maxAmount, currency) {
   const amountInput = $("#quickEntryForm [name=amount_original]");
-  const wheel = $("#quickAmountWheel");
   const hint = $("#quickAmountHint");
-  if (!amountInput || !wheel || !hint) return;
+  if (!amountInput || !hint) return;
 
   state.quickEntryMax = Number.isFinite(Number(maxAmount)) ? Math.max(0, Number(maxAmount)) : 0;
   amountInput.max = String(state.quickEntryMax);
-  wheel.max = String(Math.max(1, Math.floor(state.quickEntryMax)));
-  wheel.disabled = state.quickEntryMax <= 0;
 
   const current = clampQuickAmount(amountInput.value);
   amountInput.value = String(current);
-  wheel.value = String(Math.min(Number(wheel.max), Math.floor(current)));
   syncQuickAmountDisplay(current);
   hint.textContent = t("maxSpendHint", {
     amount: formatMoney(state.quickEntryMax),
@@ -1432,8 +1706,27 @@ function clampQuickAmount(value) {
   return Number(Math.min(Math.max(0, raw), max).toFixed(2));
 }
 
+function sanitizeQuickAmountText(value) {
+  const text = String(value || "");
+  const filtered = text.replace(/[^\d.]/g, "");
+  if (!filtered) return "";
+  const [head, ...tail] = filtered.split(".");
+  const intPart = head.replace(/^0+(?=\d)/, "") || (head.startsWith("0") ? "0" : head);
+  const trailingDot = filtered.endsWith(".") && tail.length <= 1;
+  const decimals = tail.join("").slice(0, 2);
+  if (trailingDot && !decimals.length) return `${intPart}.`;
+  return decimals.length ? `${intPart}.${decimals}` : intPart;
+}
+
 function syncQuickAmountDisplay(value) {
   const amountDisplay = $("#quickAmountDisplay");
+  const amountInput = $("#quickAmountInput");
+  if (amountInput) {
+    const normalized = sanitizeQuickAmountText(String(value || "0"));
+    if (normalized !== amountInput.value && normalized !== "") {
+      amountInput.value = normalized;
+    }
+  }
   if (!amountDisplay) return;
   amountDisplay.textContent = formatMoney(value);
 }
@@ -1525,7 +1818,7 @@ async function submitQuickEntryForm(event) {
   const form = event.currentTarget;
   if (!(form instanceof HTMLFormElement)) return;
   const fd = new FormData(form);
-  const requestedAmount = Number(fd.get("amount_original"));
+  const requestedAmount = Number(sanitizeQuickAmountText(String(fd.get("amount_original") || "")));
   const currencyCode = ensureUICurrency(String(fd.get("currency_original") || "USD").toUpperCase());
   if (!Number.isFinite(requestedAmount) || requestedAmount <= 0) {
     showToast(t("invalidAmount"), true);
@@ -1553,6 +1846,7 @@ async function submitQuickEntryForm(event) {
     note: fd.get("note") || "",
     tags: []
   };
+  rememberQuickEntryPreferences();
   try {
     await api("/api/v1/transactions", { method: "POST", body: JSON.stringify(payload) });
     showToast(
@@ -1567,10 +1861,7 @@ async function submitQuickEntryForm(event) {
       closeSheet("quickEntrySheet");
       const amountInput = $("#quickEntryForm [name=amount_original]");
       if (amountInput) amountInput.value = "0";
-      const wheel = $("#quickAmountWheel");
-      if (wheel) wheel.value = "0";
-      const display = $("#quickAmountDisplay");
-      if (display) display.textContent = "0.00";
+      syncQuickAmountDisplay(0);
       validateQuickEntryAmount();
     } catch (error) {
       showRefreshFailureToast(error);
@@ -2094,11 +2385,22 @@ function renderPlannedBudgetCard(dashboard) {
   const yearlyRows = dashboard.budget_status_yearly || [];
   const summary = $("#budgetPlanSummary");
   const list = $("#budgetPlanList");
-  if (!summary || !list) return;
+  const pieView = $("#budgetPlanPieView");
+  const toggleBtn = $("#budgetPlanViewToggleBtn");
+  if (!summary || !list || !pieView || !toggleBtn) return;
+
+  const showPie = Boolean(state.ui.budgetPieView);
+  toggleBtn.textContent = showPie ? "≣" : "◔";
+  const toggleLabel = showPie ? t("budgetViewToggleToList") : t("budgetViewToggleToPie");
+  toggleBtn.setAttribute("aria-label", toggleLabel);
+  toggleBtn.setAttribute("title", toggleLabel);
+
   if (!monthlyRows.length && !yearlyRows.length) {
     summary.classList.remove("hidden");
     summary.textContent = t("emptyNoBudgetMonth");
     list.innerHTML = "";
+    pieView.classList.add("hidden");
+    list.classList.remove("hidden");
     return;
   }
   summary.textContent = "";
@@ -2140,6 +2442,78 @@ function renderPlannedBudgetCard(dashboard) {
   const monthlyBlock = renderRows(monthlyRows, t("periodMonthly"));
   const yearlyBlock = renderRows(yearlyRows, t("periodYearly"));
   list.innerHTML = `${monthlyBlock}${yearlyBlock}`;
+  pieView.innerHTML = renderBudgetPieView(monthlyRows, yearlyRows, dashboard.base_currency || state.settings?.base_currency || "USD");
+  list.classList.toggle("hidden", showPie);
+  pieView.classList.toggle("hidden", !showPie);
+}
+
+function renderBudgetPieView(monthlyRows, yearlyRows, baseCurrency) {
+  const palette = ["#3f8059", "#b28a61", "#d38f53", "#8f6d4f", "#b55b52", "#6f8e9b", "#7b6aa9"];
+  const entries = [
+    ...monthlyRows.map((row) => ({ ...row, period: t("periodMonthly") })),
+    ...yearlyRows.map((row) => ({ ...row, period: t("periodYearly") }))
+  ]
+    .map((row) => ({
+      label: `${withL1Emoji(row.category_l1)} / ${row.period}`,
+      spent: Math.max(0, Number(row.spent_amount || 0))
+    }))
+    .filter((row) => row.spent > 0);
+
+  if (!entries.length) {
+    return `<div class="list-row muted">${escapeHtml(t("budgetPieEmpty"))}</div>`;
+  }
+
+  entries.sort((a, b) => b.spent - a.spent);
+  const maxSegments = 6;
+  const top = entries.slice(0, maxSegments);
+  const otherSum = entries.slice(maxSegments).reduce((sum, row) => sum + row.spent, 0);
+  const segments = [...top];
+  if (otherSum > 0.01) {
+    segments.push({ label: t("budgetPieOther"), spent: otherSum });
+  }
+  const total = segments.reduce((sum, row) => sum + row.spent, 0);
+  if (total <= 0) {
+    return `<div class="list-row muted">${escapeHtml(t("budgetPieEmpty"))}</div>`;
+  }
+
+  let cursor = 0;
+  const gradientStops = segments
+    .map((row, index) => {
+      const pct = (row.spent / total) * 100;
+      const start = cursor;
+      cursor += pct;
+      const color = palette[index % palette.length];
+      return `${color} ${start.toFixed(3)}% ${cursor.toFixed(3)}%`;
+    })
+    .join(", ");
+
+  const legend = segments
+    .map((row, index) => {
+      const color = palette[index % palette.length];
+      const pct = ((row.spent / total) * 100).toFixed(1);
+      return `
+        <article class="budget-pie-row">
+          <div class="budget-pie-row-main">
+            <span class="budget-pie-dot" style="background:${color};"></span>
+            <span>${escapeHtml(row.label)}</span>
+          </div>
+          <span class="mono muted">${pct}% · ${formatMoney(row.spent)} ${escapeHtml(baseCurrency)}</span>
+        </article>
+      `;
+    })
+    .join("");
+
+  return `
+    <div class="budget-pie-layout">
+      <div class="budget-pie-chart" style="background: conic-gradient(${gradientStops});">
+        <div class="budget-pie-center">
+          <strong>${formatMoney(total)}</strong>
+          <span>${escapeHtml(t("budgetPieCenterLabel"))} · ${escapeHtml(baseCurrency)}</span>
+        </div>
+      </div>
+      <div class="budget-pie-legend">${legend}</div>
+    </div>
+  `;
 }
 
 
@@ -2691,6 +3065,11 @@ function setText(id, value) {
   if (el) el.textContent = value;
 }
 
+function setAttr(id, name, value) {
+  const el = document.getElementById(id);
+  if (el) el.setAttribute(name, value);
+}
+
 function applyI18n() {
   setText("subtitleText", t("subtitle"));
   setText("monthLabelText", t("month"));
@@ -2701,6 +3080,12 @@ function applyI18n() {
   setText("heroRestrictedLegend", t("labelRestricted"));
   setText("budgetPlanTitle", t("plannedBudget"));
   setText("recentExpensesTitle", t("recentExpenses"));
+  setAttr("quickDateToggleBtn", "title", t("quickDateToggle"));
+  setAttr("quickDateToggleBtn", "aria-label", t("quickDateToggle"));
+  setAttr("budgetPlanViewToggleBtn", "title", state.ui.budgetPieView ? t("budgetViewToggleToList") : t("budgetViewToggleToPie"));
+  setAttr("budgetPlanViewToggleBtn", "aria-label", state.ui.budgetPieView ? t("budgetViewToggleToList") : t("budgetViewToggleToPie"));
+  setAttr("quickEntryBackBtn", "title", t("back"));
+  setAttr("quickEntryBackBtn", "aria-label", t("back"));
   setText("trendTitle", t("trendTitle"));
   setText("trendFromLabel", t("trendFrom"));
   setText("trendToLabel", t("trendTo"));
@@ -2718,6 +3103,7 @@ function applyI18n() {
   setText("quickTypeIncome", t("txTypeIncome"));
   setText("quickTypeTransfer", t("txTypeTransfer"));
   setText("quickEntryDateLabel", t("date"));
+  setText("quickEntryDateInputLabel", t("date"));
   setText("quickStepL1Title", t("stepL1Title"));
   setText("quickStepL2Title", t("stepL2Title"));
   setText("quickStepSpendTitle", t("stepSpendTitle"));
@@ -2727,8 +3113,9 @@ function applyI18n() {
   setText("quickEntryAccountLabel", t("account"));
   setText("quickEntryAccountToLabel", t("accountTo"));
   setText("quickEntryCurrencyLabel", t("currency"));
+  setText("quickDateDefaultHint", t("quickDateHint"));
+  updateQuickDateDisplay();
   setText("quickEntryAmountLabel", t("amount"));
-  setText("quickEntryWheelLabel", t("amountWheel"));
   setText("quickEntryNoteLabel", t("note"));
   setText(
     "quickEntrySaveBtn",
@@ -2809,9 +3196,14 @@ function applyI18n() {
     if (optionNetworth) optionNetworth.textContent = t("trendModeNetWorth");
   }
   for (const button of document.querySelectorAll("[data-close-sheet]")) {
-    if (button instanceof HTMLButtonElement) {
-      button.textContent = t("close");
+    if (!(button instanceof HTMLButtonElement)) continue;
+    if (button.id === "quickEntryBackBtn") {
+      button.textContent = "←";
+      button.setAttribute("aria-label", t("back"));
+      button.setAttribute("title", t("back"));
+      continue;
     }
+    button.textContent = t("close");
   }
   const debugFilterInput = $("#debugFilterInput");
   if (debugFilterInput) {
@@ -2844,6 +3236,7 @@ function loadUiState() {
     state.ui.showRisk = Boolean(parsed.showRisk);
     state.ui.showRecentExpenses = parsed.showRecentExpenses !== false;
     state.ui.showDebug = Boolean(parsed.showDebug);
+    state.ui.budgetPieView = Boolean(parsed.budgetPieView);
     if (parsed.debug) {
       state.debug.onlyFailed = Boolean(parsed.debug.onlyFailed);
       state.debug.filter = String(parsed.debug.filter || "");
@@ -2868,6 +3261,7 @@ function persistUiState() {
         showRisk: state.ui.showRisk,
         showRecentExpenses: state.ui.showRecentExpenses,
         showDebug: state.ui.showDebug,
+        budgetPieView: state.ui.budgetPieView,
         trend: {
           start: state.trend.start,
           end: state.trend.end,

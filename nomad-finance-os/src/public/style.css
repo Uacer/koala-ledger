@@ -47,8 +47,9 @@ body {
   gap: 8px;
   padding: 10px 14px;
   border-bottom: 0;
-  background: transparent;
-  backdrop-filter: none;
+  background: color-mix(in oklab, var(--bg-2), white 14%);
+  backdrop-filter: blur(7px);
+  box-shadow: 0 1px 0 rgba(34, 29, 24, 0.08);
 }
 
 .minimal-topbar {
@@ -262,6 +263,26 @@ body.utility-mode .fab {
   background: var(--ink);
   color: var(--accent-ink);
   border-color: var(--ink);
+}
+
+.quick-segmented {
+  gap: 2px;
+}
+
+.quick-segmented .seg-btn {
+  border: 0;
+  border-bottom: 2px solid transparent;
+  border-radius: 0;
+  padding: 8px 6px;
+  background: transparent;
+  color: var(--ink-soft);
+  font-weight: 600;
+}
+
+.quick-segmented .seg-btn.active {
+  border-color: #c95856;
+  background: transparent;
+  color: #c95856;
 }
 
 .trend-controls {
@@ -552,6 +573,15 @@ h3 {
   font-size: 0.84rem;
 }
 
+.budget-view-toggle {
+  border-radius: 999px;
+  padding: 4px 10px;
+  min-width: 36px;
+  min-height: 30px;
+  font-size: 1rem;
+  line-height: 1;
+}
+
 .budget-plan-row {
   display: grid;
   gap: 5px;
@@ -577,6 +607,88 @@ h3 {
   justify-content: space-between;
   gap: 8px;
   font-size: 0.8rem;
+}
+
+.budget-pie-view {
+  margin-top: 6px;
+}
+
+.budget-pie-layout {
+  display: grid;
+  grid-template-columns: 124px 1fr;
+  gap: 10px;
+  align-items: center;
+}
+
+.budget-pie-chart {
+  width: 124px;
+  height: 124px;
+  border-radius: 50%;
+  display: grid;
+  place-items: center;
+  border: 1px solid var(--line);
+}
+
+.budget-pie-center {
+  width: 78px;
+  height: 78px;
+  border-radius: 50%;
+  border: 1px solid var(--line);
+  background: var(--paper);
+  display: grid;
+  place-items: center;
+  text-align: center;
+  padding: 4px;
+}
+
+.budget-pie-center strong {
+  font-size: 0.78rem;
+  line-height: 1;
+}
+
+.budget-pie-center span {
+  margin-top: 2px;
+  font-size: 0.62rem;
+  color: var(--ink-soft);
+}
+
+.budget-pie-legend {
+  display: grid;
+  gap: 6px;
+}
+
+.budget-pie-row {
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+  font-size: 0.76rem;
+  align-items: center;
+}
+
+.budget-pie-row-main {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+}
+
+.budget-pie-dot {
+  width: 9px;
+  height: 9px;
+  border-radius: 999px;
+  border: 1px solid rgba(0, 0, 0, 0.1);
+  flex: 0 0 auto;
+}
+
+@media (max-width: 520px) {
+  .budget-pie-layout {
+    grid-template-columns: 1fr;
+    justify-items: center;
+  }
+
+  .budget-pie-legend {
+    width: 100%;
+  }
 }
 
 .recent-expense-row {
@@ -909,6 +1021,245 @@ body.utility-mode .sheet {
   border: 1px solid var(--line);
   border-bottom: 0;
   padding: 14px 14px 18px;
+}
+
+#quickEntrySheet .sheet-card {
+  top: 0;
+  bottom: 0;
+  max-height: none;
+  border-radius: 0;
+  border: 0;
+  padding: 10px 12px calc(16px + env(safe-area-inset-bottom));
+}
+
+.quick-entry-head {
+  margin-bottom: 8px;
+}
+
+.quick-sheet-close {
+  width: 36px;
+  height: 36px;
+  border-radius: 9px;
+  font-size: 1.2rem;
+  line-height: 1;
+  background: transparent;
+  border: 0;
+}
+
+.quick-head-spacer {
+  width: 36px;
+  height: 36px;
+}
+
+.quick-entry-form {
+  display: grid;
+  grid-template-rows: auto auto 1fr;
+  gap: 8px;
+  min-height: calc(100vh - 86px);
+}
+
+.quick-icon-step {
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  background: color-mix(in oklab, var(--paper), white 10%);
+  padding: 10px;
+}
+
+.quick-composer-card {
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  background: color-mix(in oklab, var(--paper), white 10%);
+  padding: 10px;
+  display: grid;
+  gap: 10px;
+}
+
+.quick-icon-step {
+  display: grid;
+  gap: 8px;
+}
+
+.quick-icon-grid {
+  display: grid;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.quick-icon-btn {
+  border: 0;
+  background: transparent;
+  color: var(--ink);
+  padding: 2px;
+  display: grid;
+  justify-items: center;
+  gap: 4px;
+  cursor: pointer;
+}
+
+.quick-icon-btn .icon {
+  width: 44px;
+  height: 44px;
+  border-radius: 50%;
+  display: grid;
+  place-items: center;
+  font-size: 1.2rem;
+  background: #ece7de;
+}
+
+.quick-icon-btn .label {
+  font-size: 0.77rem;
+  line-height: 1.1;
+  text-align: center;
+  color: var(--ink-soft);
+}
+
+.quick-icon-btn.active .icon {
+  background: #d96a68;
+  color: #fff7ef;
+}
+
+.quick-icon-btn.active .label {
+  color: #b7504f;
+  font-weight: 600;
+}
+
+.quick-meta-step {
+  display: grid;
+  gap: 8px;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  padding: 0;
+}
+
+.quick-meta-grid {
+  display: flex;
+  flex-wrap: nowrap;
+  gap: 8px;
+  align-items: center;
+  overflow-x: auto;
+  padding-bottom: 2px;
+}
+
+.quick-chip-field {
+  display: block;
+  min-width: 0;
+  flex: 1 1 0;
+}
+
+.quick-chip-field select {
+  border-radius: 999px;
+  background: #f3ede4;
+  padding: 4px 10px;
+  min-height: 32px;
+  font-size: 0.86rem;
+  width: 100%;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  overflow: hidden;
+}
+
+.quick-date-toggle-btn {
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  background: #f3ede4;
+  color: var(--ink);
+  padding: 4px 10px;
+  cursor: pointer;
+  font-size: 0.86rem;
+  min-height: 32px;
+  width: 100%;
+  text-align: left;
+  white-space: nowrap;
+}
+
+.quick-date-wrap {
+  display: grid;
+  gap: 4px;
+}
+
+.quick-amount-step {
+  display: grid;
+  align-content: start;
+  gap: 8px;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  padding: 0;
+}
+
+.quick-note-amount-row {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 8px;
+  align-items: end;
+}
+
+.quick-note-field {
+  display: grid;
+  gap: 4px;
+}
+
+.quick-note-field span {
+  font-size: 0.74rem;
+  color: var(--ink-soft);
+}
+
+.quick-note-field input {
+  border-radius: 10px;
+}
+
+.quick-amount-panel {
+  display: grid;
+  justify-items: end;
+  gap: 4px;
+}
+
+.quick-amount-panel span {
+  font-size: 0.74rem;
+  color: var(--ink-soft);
+}
+
+#quickAmountInput {
+  width: 136px;
+  text-align: right;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  padding: 2px 0;
+  font-size: 2rem;
+  line-height: 1;
+  color: #d15f5c;
+  font-weight: 700;
+}
+
+#quickAmountInput:focus {
+  border: 0;
+  box-shadow: none;
+  background: transparent;
+}
+
+.quick-keypad {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 6px;
+}
+
+.quick-keypad-btn {
+  border: 0;
+  border-radius: 10px;
+  background: #ece7df;
+  color: var(--ink);
+  min-height: 46px;
+  cursor: pointer;
+  font-size: 1.2rem;
+}
+
+.quick-keypad-save {
+  background: #d95d59;
+  color: #fff7ef;
+  font-weight: 700;
+  font-size: 1.1rem;
 }
 
 #settingsSheet .sheet-backdrop {

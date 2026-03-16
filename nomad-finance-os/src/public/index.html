@@ -63,9 +63,21 @@
         </article>
         <section class="infographic-grid">
           <article class="card">
-            <h3 id="budgetPlanTitle">Planned Budget</h3>
+            <div class="section-head">
+              <h3 id="budgetPlanTitle">Planned Budget</h3>
+              <button
+                id="budgetPlanViewToggleBtn"
+                class="btn btn-ghost budget-view-toggle"
+                type="button"
+                aria-label="Switch budget view"
+                title="Switch budget view"
+              >
+                ◔
+              </button>
+            </div>
             <div id="budgetPlanSummary" class="muted"></div>
             <div id="budgetPlanList" class="list-block compact-list"></div>
+            <div id="budgetPlanPieView" class="budget-pie-view hidden"></div>
           </article>
           <article class="card advanced-section" id="cashFlowCard">
             <h3 id="cashFlowTitle">Cash Flow Pulse</h3>
@@ -421,92 +433,108 @@
 
     <section id="quickEntrySheet" class="sheet hidden" aria-hidden="true">
       <div class="sheet-backdrop" data-close-sheet="quickEntrySheet"></div>
-      <article class="sheet-card">
-        <div class="sheet-head">
-          <h3 id="quickEntryTitle">Add Expense</h3>
-          <button class="btn btn-ghost" type="button" data-close-sheet="quickEntrySheet">Close</button>
-        </div>
-        <form id="quickEntryForm" class="sheet-form">
-          <div class="step-block">
-            <div class="segmented">
-              <button class="seg-btn active" type="button" data-quick-type="expense" id="quickTypeExpense">
-                Expense
-              </button>
-              <button class="seg-btn" type="button" data-quick-type="income" id="quickTypeIncome">
-                Income
-              </button>
-              <button class="seg-btn" type="button" data-quick-type="transfer" id="quickTypeTransfer">
-                Transfer
-              </button>
-            </div>
+      <article class="sheet-card quick-entry-sheet-card">
+        <div class="sheet-head quick-entry-head">
+          <button id="quickEntryBackBtn" class="icon-btn quick-sheet-close" type="button" data-close-sheet="quickEntrySheet" aria-label="Back">←</button>
+          <div class="segmented quick-segmented">
+            <button class="seg-btn active" type="button" data-quick-type="expense" id="quickTypeExpense">
+              Expense
+            </button>
+            <button class="seg-btn" type="button" data-quick-type="income" id="quickTypeIncome">
+              Income
+            </button>
+            <button class="seg-btn" type="button" data-quick-type="transfer" id="quickTypeTransfer">
+              Transfer
+            </button>
           </div>
-          <label>
-            <span id="quickEntryDateLabel">Date</span>
-            <input name="date" type="date" required />
-          </label>
-          <section id="quickStepL1" class="step-block">
+          <span class="quick-head-spacer" aria-hidden="true"></span>
+        </div>
+        <form id="quickEntryForm" class="sheet-form quick-entry-form">
+          <section id="quickStepL1" class="quick-icon-step">
             <p class="step-title" id="quickStepL1Title">Step 1 · Choose Category L1</p>
-            <label>
-              <span id="quickEntryL1Label">Category L1</span>
-              <select name="category_l1" required></select>
-            </label>
-          </section>
-          <section id="quickStepL2" class="step-block hidden">
-            <p class="step-title" id="quickStepL2Title">Step 2 · Choose Category L2</p>
-            <label>
-              <span id="quickEntryL2Label">Category L2</span>
-              <select name="category_l2" required></select>
-            </label>
-          </section>
-          <section id="quickStepSpend" class="step-block hidden">
-            <p class="step-title" id="quickStepSpendTitle">Step 3 · Account & Currency</p>
-            <label id="quickEntryAccountFromWrap">
-              <span id="quickEntryAccountLabel">Account</span>
-              <select name="account_from_id"></select>
-            </label>
-            <label id="quickEntryAccountToWrap" class="hidden">
-              <span id="quickEntryAccountToLabel">Account To</span>
-              <select name="account_to_id"></select>
-            </label>
-            <label>
-              <span id="quickEntryCurrencyLabel">Currency</span>
-              <select name="currency_original" required>
-                <option value="CNY">人民币 (CNY)</option>
-                <option value="EUR">欧元 (EUR)</option>
-                <option value="THB">泰铢 (THB)</option>
-                <option value="USD" selected>美元 (USD)</option>
-                <option value="JPY">日元 (JPY)</option>
-                <option value="KRW">韩元 (KRW)</option>
-              </select>
-            </label>
-          </section>
-          <section id="quickStepAmount" class="step-block hidden">
-            <p class="step-title" id="quickStepAmountTitle">Step 4 · Enter Amount</p>
-            <label>
-              <span id="quickEntryAmountLabel">Amount</span>
-              <input name="amount_original" type="number" step="0.01" min="0" required />
-            </label>
-            <div class="wheel-block">
-              <div class="wheel-head">
-                <span id="quickEntryWheelLabel">Amount Wheel</span>
-                <strong id="quickAmountDisplay" class="mono">0.00</strong>
-              </div>
-              <input
-                id="quickAmountWheel"
-                type="range"
-                min="0"
-                max="50000"
-                step="1"
-                value="0"
-              />
-              <div id="quickAmountHint" class="muted mono">max: 0.00</div>
+            <div id="quickL1Grid" class="quick-icon-grid" aria-label="Category L1"></div>
+            <div class="hidden">
+              <label>
+                <span id="quickEntryL1Label">Category L1</span>
+                <select name="category_l1" required></select>
+              </label>
             </div>
           </section>
-          <label>
-            <span id="quickEntryNoteLabel">Note</span>
-            <input name="note" type="text" maxlength="500" placeholder="optional" />
-          </label>
-          <button class="btn btn-solid" id="quickEntrySaveBtn" type="submit">Save Expense</button>
+          <section id="quickStepL2" class="quick-icon-step hidden">
+            <p class="step-title" id="quickStepL2Title">Step 2 · Choose Category L2</p>
+            <div id="quickL2Grid" class="quick-icon-grid" aria-label="Category L2"></div>
+            <div class="hidden">
+              <label>
+                <span id="quickEntryL2Label">Category L2</span>
+                <select name="category_l2" required></select>
+              </label>
+            </div>
+          </section>
+          <section id="quickComposerCard" class="quick-composer-card hidden">
+            <section id="quickStepSpend" class="quick-meta-step hidden">
+              <div class="quick-meta-grid">
+                <label id="quickEntryAccountFromWrap" class="quick-chip-field">
+                  <span id="quickEntryAccountLabel" class="sr-only">Account</span>
+                  <select name="account_from_id"></select>
+                </label>
+                <label id="quickEntryAccountToWrap" class="quick-chip-field hidden">
+                  <span id="quickEntryAccountToLabel" class="sr-only">Account To</span>
+                  <select name="account_to_id"></select>
+                </label>
+                <label class="quick-chip-field">
+                  <span id="quickEntryCurrencyLabel" class="sr-only">Currency</span>
+                  <select name="currency_original" required>
+                    <option value="CNY">人民币 (CNY)</option>
+                    <option value="EUR">欧元 (EUR)</option>
+                    <option value="THB">泰铢 (THB)</option>
+                    <option value="USD" selected>美元 (USD)</option>
+                    <option value="JPY">日元 (JPY)</option>
+                    <option value="KRW">韩元 (KRW)</option>
+                  </select>
+                </label>
+                <div class="quick-chip-field quick-date-chip-field">
+                  <span id="quickEntryDateLabel" class="sr-only">Date</span>
+                  <button id="quickDateToggleBtn" class="quick-date-toggle-btn" type="button">
+                    🗓️ <span id="quickDateToggleText">Date</span>
+                  </button>
+                </div>
+              </div>
+              <label id="quickDateWrap" class="quick-date-wrap hidden">
+                <span id="quickEntryDateInputLabel" class="sr-only">Date</span>
+                <input name="date" type="date" required />
+              </label>
+            </section>
+            <section id="quickStepAmount" class="quick-amount-step hidden">
+              <div class="quick-note-amount-row">
+                <label class="quick-note-field">
+                  <span id="quickEntryNoteLabel">Note</span>
+                  <input name="note" type="text" maxlength="500" placeholder="optional" />
+                </label>
+                <div class="quick-amount-panel">
+                  <span id="quickEntryAmountLabel">Amount</span>
+                  <input id="quickAmountInput" name="amount_original" type="text" inputmode="decimal" autocomplete="off" required value="0" />
+                </div>
+              </div>
+              <div id="quickAmountHint" class="muted mono">max: 0.00</div>
+              <div id="quickKeypad" class="quick-keypad" aria-label="Amount keypad">
+                <button class="quick-keypad-btn" type="button" data-keypad="1">1</button>
+                <button class="quick-keypad-btn" type="button" data-keypad="2">2</button>
+                <button class="quick-keypad-btn" type="button" data-keypad="3">3</button>
+                <button class="quick-keypad-btn" type="button" data-keypad="back">⌫</button>
+                <button class="quick-keypad-btn" type="button" data-keypad="4">4</button>
+                <button class="quick-keypad-btn" type="button" data-keypad="5">5</button>
+                <button class="quick-keypad-btn" type="button" data-keypad="6">6</button>
+                <button class="quick-keypad-btn" type="button" data-keypad="clear">C</button>
+                <button class="quick-keypad-btn" type="button" data-keypad="7">7</button>
+                <button class="quick-keypad-btn" type="button" data-keypad="8">8</button>
+                <button class="quick-keypad-btn" type="button" data-keypad="9">9</button>
+                <button class="quick-keypad-btn" type="button" data-keypad="00">00</button>
+                <button class="quick-keypad-btn" type="button" data-keypad=".">.</button>
+                <button class="quick-keypad-btn" type="button" data-keypad="0">0</button>
+                <button class="quick-keypad-btn quick-keypad-save" id="quickEntrySaveBtn" type="submit">Save Expense</button>
+              </div>
+            </section>
+          </section>
         </form>
       </article>
     </section>
