@@ -4,7 +4,6 @@ const state = {
   accounts: [],
   categories: {},
   settings: null,
-  providers: [],
   agentTokens: [],
   transactions: [],
   dashboard: null,
@@ -234,7 +233,7 @@ const I18N = {
     categoryL1Updated: "L1 category updated",
     categoryL2Created: "Tag created",
     categoryL2Deleted: "Tag deleted",
-    aiProviders: "🤖 AI Providers",
+    agentAccess: "🤖 Agent Access",
     backToDashboard: "Back to Dashboard",
     back: "Back",
     edit: "Edit",
@@ -446,7 +445,7 @@ const I18N = {
     categoryL1Updated: "一级分类已更新",
     categoryL2Created: "标签已创建",
     categoryL2Deleted: "标签已删除",
-    aiProviders: "🤖 AI 提供商",
+    agentAccess: "🤖 Agent 接入",
     backToDashboard: "返回总览",
     back: "返回",
     edit: "编辑",
@@ -602,8 +601,6 @@ function bindUI() {
   if (l2Form) l2Form.addEventListener("submit", submitL2Form);
   const settingsForm = $("#settingsForm");
   if (settingsForm) settingsForm.addEventListener("submit", submitSettingsForm);
-  const providerForm = $("#providerForm");
-  if (providerForm) providerForm.addEventListener("submit", submitProviderForm);
   const agentTokenForm = $("#agentTokenForm");
   if (agentTokenForm) agentTokenForm.addEventListener("submit", submitAgentTokenForm);
   $("#captureTextForm").addEventListener("submit", submitCaptureTextForm);
@@ -920,32 +917,6 @@ function bindUI() {
   handleTxTypeChange();
   closeTransactionRecordsOnlyMode();
 
-  $("#providerList").addEventListener("click", async (event) => {
-    if (!(event.target instanceof Element)) return;
-    const btn = event.target.closest("button[data-action]");
-    if (!btn) return;
-    const id = Number(btn.dataset.id);
-    if (!Number.isInteger(id)) return;
-    const action = btn.dataset.action;
-    try {
-      if (action === "set-default") {
-        await api(`/api/v1/ai/providers/${id}/set-default`, { method: "POST", body: "{}" });
-        showToast("Default provider updated");
-      } else if (action === "validate") {
-        const result = await api(`/api/v1/ai/providers/${id}/validate`, {
-          method: "POST",
-          body: "{}"
-        });
-        showToast(result.ok ? "Provider validated" : "Provider validation failed", !result.ok);
-      } else if (action === "delete") {
-        await api(`/api/v1/ai/providers/${id}`, { method: "DELETE" });
-        showToast("Provider removed");
-      }
-      await loadProviders();
-    } catch (error) {
-      showErrorToast(error);
-    }
-  });
   const agentTokenList = $("#agentTokenList");
   if (agentTokenList) {
     agentTokenList.addEventListener("click", async (event) => {
@@ -1557,7 +1528,7 @@ async function loadAll() {
   try {
     syncControlState();
     loadUiState();
-    await Promise.all([loadSettings(), loadCategories(), loadAccounts(), loadProviders(), loadAgentTokens()]);
+    await Promise.all([loadSettings(), loadCategories(), loadAccounts(), loadAgentTokens()]);
     await Promise.all([
       loadDashboard(),
       loadTransactions(),
@@ -1577,8 +1548,7 @@ async function loadSettings() {
   state.settings = (await api("/api/v1/settings")) || {
     base_currency: "USD",
     timezone: "UTC",
-    ui_language: "en",
-    default_ai_provider_id: null
+    ui_language: "en"
   };
   const uiLanguage = ensureUILanguage(state.settings.ui_language || "en");
   state.settings.ui_language = uiLanguage;
@@ -1658,11 +1628,6 @@ async function loadAccounts() {
   populateAccountSelects();
   populateTransactionEditAccountSelects();
   populateQuickEntryAccounts();
-}
-
-async function loadProviders() {
-  state.providers = (await api("/api/v1/ai/providers")) || [];
-  renderProviders();
 }
 
 async function loadAgentTokens() {
@@ -2892,34 +2857,6 @@ async function submitAgentTokenForm(event) {
   }
 }
 
-async function submitProviderForm(event) {
-  event.preventDefault();
-  const form = event.currentTarget;
-  if (!(form instanceof HTMLFormElement)) return;
-  const fd = new FormData(form);
-  try {
-    await api("/api/v1/ai/providers", {
-      method: "POST",
-      body: JSON.stringify({
-        provider_type: "openai_compatible",
-        display_name: fd.get("display_name"),
-        base_url: fd.get("base_url"),
-        model: fd.get("model"),
-        api_key: fd.get("api_key")
-      })
-    });
-    showToast("Provider created");
-    try {
-      await loadProviders();
-      form.reset();
-    } catch (error) {
-      showRefreshFailureToast(error);
-    }
-  } catch (error) {
-    showErrorToast(error);
-  }
-}
-
 async function submitCaptureTextForm(event) {
   event.preventDefault();
   const form = event.currentTarget;
@@ -2931,7 +2868,7 @@ async function submitCaptureTextForm(event) {
       body: JSON.stringify({ text: fd.get("text") })
     });
     setLatestExtraction(payload);
-    showToast("Parsed with provider");
+    showToast("Parsed with AI agent");
   } catch (error) {
     showErrorToast(error);
   }
@@ -2951,7 +2888,7 @@ async function submitCaptureImageForm(event) {
       })
     });
     setLatestExtraction(payload);
-    showToast("OCR parsed with provider");
+    showToast("OCR parsed with AI agent");
   } catch (error) {
     showErrorToast(error);
   }
@@ -3705,36 +3642,6 @@ async function deleteTransactionById(txId, options = {}) {
   }
 }
 
-function renderProviders() {
-  const target = $("#providerList");
-  const providers = Array.isArray(state.providers) ? state.providers.filter(Boolean) : [];
-  if (!providers.length) {
-    target.innerHTML =
-      '<div class="list-row muted">No provider configured. Capture parser is unavailable until provider is set.</div>';
-    return;
-  }
-  target.innerHTML = providers
-    .map(
-      (row) => `
-      <article class="list-row">
-        <div class="row-main">
-          <strong>${escapeHtml(row.display_name)}</strong>
-          <span class="pill">${escapeHtml(row.model)}</span>
-        </div>
-        <div class="muted">${escapeHtml(row.base_url)} · key ${row.key_masked}</div>
-        <div class="row-main">
-          <span class="${row.is_default ? "" : "muted"}">${row.is_default ? "default provider" : "non-default"}</span>
-          <div class="tag-wrap">
-            <button class="btn" data-action="set-default" data-id="${row.id}">Set Default</button>
-            <button class="btn" data-action="validate" data-id="${row.id}">Validate</button>
-            <button class="btn" data-action="delete" data-id="${row.id}">Delete</button>
-          </div>
-        </div>
-      </article>`
-    )
-    .join("");
-}
-
 function renderAgentTokens() {
   const target = $("#agentTokenList");
   if (!target) return;
@@ -4243,7 +4150,7 @@ function applyI18n() {
   setText("addL1BottomBtn", t("addL1Bottom"));
   setText("categoryPromptParentLabel", t("categoryPromptParentLabel"));
   setText("categoryPromptEmojiLabel", t("categoryPromptEmojiLabel"));
-  setText("settingsLinkAi", t("aiProviders"));
+  setText("settingsLinkAi", t("agentAccess"));
   setText("agentTokenTitle", t("agentTokensTitle"));
   setText("agentTokenListTitle", t("agentTokensTitle"));
   setText("agentTokenHint", t("agentTokensHint"));

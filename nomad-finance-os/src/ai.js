@@ -1,6 +1,3 @@
-const { decryptText } = require("./security");
-const { parseFinancialText } = require("./parser");
-
 function mapCategoriesForPrompt(categoriesMap) {
   return Object.entries(categoriesMap)
     .filter(([, cfg]) => cfg.active)
@@ -33,7 +30,29 @@ function delay(ms) {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
-async function parseProviderError(response) {
+function createAgentConfigError() {
+  const error = new Error(
+    "AI agent is not configured. Set NOMAD_AGENT_API_KEY (or OPENAI_API_KEY) on the server."
+  );
+  error.code = "AI_AGENT_NOT_CONFIGURED";
+  return error;
+}
+
+function getAgentConfig() {
+  const apiKey = String(process.env.NOMAD_AGENT_API_KEY || process.env.OPENAI_API_KEY || "").trim();
+  if (!apiKey) return null;
+  const baseUrl = String(process.env.NOMAD_AGENT_BASE_URL || process.env.OPENAI_BASE_URL || "https://api.openai.com/v1")
+    .trim()
+    .replace(/\/+$/, "");
+  const model = String(process.env.NOMAD_AGENT_MODEL || process.env.OPENAI_MODEL || "gpt-4o-mini").trim();
+  return {
+    apiKey,
+    baseUrl,
+    model: model || "gpt-4o-mini"
+  };
+}
+
+async function parseAgentError(response) {
   let payload = null;
   let rawText = "";
   try {
@@ -64,10 +83,7 @@ async function parseProviderError(response) {
   };
 }
 
-async function parseWithProvider(provider, { text, imageBase64 }, { categories, accounts }) {
-  const apiKey = decryptText(provider.encrypted_api_key);
-  const baseUrl = String(provider.base_url || "").replace(/\/$/, "");
-  const model = provider.model || "gpt-4o-mini";
+async function parseWithAgent(config, { text, imageBase64 }, { categories, accounts }) {
   const schemaHint = {
     type: "expense|income|transfer",
     date: "YYYY-MM-DD",
@@ -107,14 +123,14 @@ async function parseWithProvider(provider, { text, imageBase64 }, { categories, 
 
   const maxRetries = 2;
   for (let attempt = 0; attempt <= maxRetries; attempt += 1) {
-    const response = await fetch(`${baseUrl}/chat/completions`, {
+    const response = await fetch(`${config.baseUrl}/chat/completions`, {
       method: "POST",
       headers: {
         "content-type": "application/json",
-        authorization: `Bearer ${apiKey}`
+        authorization: `Bearer ${config.apiKey}`
       },
       body: JSON.stringify({
-        model,
+        model: config.model,
         temperature: 0.1,
         messages: [
           { role: "system", content: "Return strict JSON object only." },
@@ -128,23 +144,23 @@ async function parseWithProvider(provider, { text, imageBase64 }, { categories, 
       const content = payload?.choices?.[0]?.message?.content || "";
       const parsed = extractJsonFromText(content);
       if (!parsed) {
-        throw new Error("Provider response is not valid JSON.");
+        throw new Error("AI response is not valid JSON.");
       }
       return parsed;
     }
 
-    const providerError = await parseProviderError(response);
-    const code = providerError.code.toLowerCase();
+    const agentError = await parseAgentError(response);
+    const code = agentError.code.toLowerCase();
     const quotaExhausted =
       response.status === 429 &&
       (code.includes("insufficient_quota") ||
         code.includes("billing_hard_limit_reached") ||
-        providerError.message.toLowerCase().includes("insufficient_quota"));
+        agentError.message.toLowerCase().includes("insufficient_quota"));
     const retryableRateLimit = response.status === 429 && !quotaExhausted;
 
     if (retryableRateLimit && attempt < maxRetries) {
-      const backoffMs = providerError.retryAfterSec
-        ? providerError.retryAfterSec * 1000
+      const backoffMs = agentError.retryAfterSec
+        ? agentError.retryAfterSec * 1000
         : 500 * 2 ** attempt + Math.floor(Math.random() * 250);
       await delay(backoffMs);
       continue;
@@ -152,99 +168,37 @@ async function parseWithProvider(provider, { text, imageBase64 }, { categories, 
 
     if (quotaExhausted) {
       throw new Error(
-        "Provider call failed (429): quota exhausted. Check OpenAI billing/project budget and retry."
+        "AI call failed (429): quota exhausted. Check OpenAI billing/project budget and retry."
       );
     }
     if (retryableRateLimit) {
-      throw new Error(
-        "Provider call failed (429): rate limit exceeded. Please wait a few seconds and retry."
-      );
+      throw new Error("AI call failed (429): rate limit exceeded. Please wait a few seconds and retry.");
     }
 
-    let detail = `Provider call failed (${response.status}).`;
-    if (providerError.message) {
-      detail = `Provider call failed (${response.status}): ${providerError.message.slice(0, 240)}`;
+    let detail = `AI call failed (${response.status}).`;
+    if (agentError.message) {
+      detail = `AI call failed (${response.status}): ${agentError.message.slice(0, 240)}`;
     }
     throw new Error(detail);
   }
 
-  throw new Error("Provider call failed (429): rate limit exceeded.");
+  throw new Error("AI call failed (429): rate limit exceeded.");
 }
 
-async function buildExtractionDraft({
-  provider,
-  text,
-  imageBase64,
-  categories,
-  accounts,
-  mode = "hybrid"
-}) {
-  const strictProvider = mode === "provider_only";
-
+async function buildExtractionDraft({ text, imageBase64, categories, accounts }) {
   if ((!text || !String(text).trim()) && !imageBase64) {
-    if (strictProvider) {
-      throw new Error("No text or image payload provided for AI parsing.");
-    }
-    return {
-      draft: {
-        type: "expense",
-        date: new Date().toISOString().slice(0, 10),
-        amount_original: 0,
-        currency_original: "USD",
-        note: "",
-        confidence: 0
-      },
-      fallback_used: true,
-      error_message: "No text available for parsing."
-    };
+    throw new Error("No text or image payload provided for AI parsing.");
   }
-
-  if (!provider) {
-    if (strictProvider) {
-      throw new Error("No active AI provider configured.");
-    }
-    if (!text || !String(text).trim()) {
-      return {
-        draft: {
-          type: "expense",
-          date: new Date().toISOString().slice(0, 10),
-          amount_original: 0,
-          currency_original: "USD",
-          note: "",
-          confidence: 0
-        },
-        fallback_used: true,
-        error_message: "No provider configured for image-only parsing."
-      };
-    }
-    return {
-      draft: parseFinancialText(text, { categories, accounts }),
-      fallback_used: true,
-      error_message: "No active provider configured; used heuristic parser."
-    };
+  const config = getAgentConfig();
+  if (!config) {
+    throw createAgentConfigError();
   }
-
-  try {
-    const draft = await parseWithProvider(
-      provider,
-      { text, imageBase64 },
-      { categories, accounts }
-    );
-    return {
-      draft,
-      fallback_used: false,
-      error_message: ""
-    };
-  } catch (error) {
-    if (strictProvider) {
-      throw new Error(String(error.message || "Provider parsing failed."));
-    }
-    return {
-      draft: parseFinancialText(text, { categories, accounts }),
-      fallback_used: true,
-      error_message: String(error.message || "Provider failed; fallback parser used.")
-    };
-  }
+  const draft = await parseWithAgent(config, { text, imageBase64 }, { categories, accounts });
+  return {
+    draft,
+    fallback_used: false,
+    error_message: ""
+  };
 }
 
 module.exports = {

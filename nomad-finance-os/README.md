@@ -9,8 +9,8 @@ Web-first MVP backend implementing:
 - Dashboard with `restricted_cash_total`
 - Runway and risk metrics
 - Monthly review separating transfers from real expense + snapshot generation
-- BYOK AI providers (OpenAI-compatible endpoint) + parse text/image draft + confirm extraction
-- Capture parse is AI-only: an active default provider is required (no heuristic fallback)
+- Built-in AI agent (OpenAI-compatible endpoint) + parse text/image draft + confirm extraction
+- Capture parse is AI-only and uses server-side agent config (no per-user provider setup)
 - FX quote endpoint and auto conversion to base currency
 - Fixed currency list for MVP: `CNY, EUR, THB, USD, JPY, KRW`
 - UI language setting: `en` / `zh` (persisted per user)
@@ -43,7 +43,9 @@ Open `http://localhost:5001` for the mobile-first UI.
 
 Optional env:
 
-- `CREDENTIAL_SECRET`: encryption secret for stored BYOK provider API keys
+- `NOMAD_AGENT_API_KEY` or `OPENAI_API_KEY`: API key for server-side AI agent (required for parse APIs)
+- `NOMAD_AGENT_BASE_URL` or `OPENAI_BASE_URL`: OpenAI-compatible base URL (defaults to `https://api.openai.com/v1`)
+- `NOMAD_AGENT_MODEL` or `OPENAI_MODEL`: model name (defaults to `gpt-4o-mini`)
 - `DB_PATH`: SQLite path (defaults to `nomad-finance.db`)
 - `BACKUP_DIR`: backup output directory (defaults to `backups`)
 - `PORT`: API port (defaults to `5001`)
@@ -151,12 +153,6 @@ Sample cron entries are provided at `ops/cron/backup.cron`:
 - `GET /api/v1/accounts`
 - `POST /api/v1/admin/rebuild-balances`
 - `GET /api/v1/tags`
-- `POST /api/v1/ai/providers`
-- `GET /api/v1/ai/providers`
-- `PATCH /api/v1/ai/providers/:id`
-- `DELETE /api/v1/ai/providers/:id`
-- `POST /api/v1/ai/providers/:id/validate`
-- `POST /api/v1/ai/providers/:id/set-default`
 - `POST /api/v1/transactions/parse-text`
 - `POST /api/v1/transactions/parse-image`
 - `POST /api/v1/transactions/confirm-extraction`

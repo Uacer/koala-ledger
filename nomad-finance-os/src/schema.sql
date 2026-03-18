@@ -105,7 +105,6 @@ CREATE TABLE IF NOT EXISTS user_settings (
     base_currency TEXT NOT NULL DEFAULT 'USD',
     timezone TEXT NOT NULL DEFAULT 'UTC',
     ui_language TEXT NOT NULL DEFAULT 'en',
-    default_ai_provider_id INTEGER,
     created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
     updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
     FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
@@ -125,23 +124,6 @@ CREATE TABLE IF NOT EXISTS yearly_budgets (
 
 CREATE INDEX IF NOT EXISTS idx_yearly_budgets_user_year ON yearly_budgets(user_id, year);
 
-CREATE TABLE IF NOT EXISTS ai_provider_credentials (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    user_id INTEGER NOT NULL,
-    provider_type TEXT NOT NULL,
-    display_name TEXT NOT NULL,
-    base_url TEXT NOT NULL,
-    model TEXT NOT NULL,
-    encrypted_api_key TEXT NOT NULL,
-    key_last4 TEXT NOT NULL,
-    active INTEGER NOT NULL DEFAULT 1,
-    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
-);
-
-CREATE INDEX IF NOT EXISTS idx_ai_providers_user ON ai_provider_credentials(user_id);
-
 CREATE TABLE IF NOT EXISTS ai_extractions (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     user_id INTEGER NOT NULL,
@@ -150,12 +132,10 @@ CREATE TABLE IF NOT EXISTS ai_extractions (
     raw_image_base64 TEXT NOT NULL DEFAULT '',
     draft_json TEXT NOT NULL,
     status TEXT NOT NULL DEFAULT 'draft',
-    provider_credential_id INTEGER,
     error_message TEXT NOT NULL DEFAULT '',
     created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
     updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
-    FOREIGN KEY (provider_credential_id) REFERENCES ai_provider_credentials(id)
+    FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
 );
 
 CREATE INDEX IF NOT EXISTS idx_ai_extractions_user ON ai_extractions(user_id);

@@ -1,6 +1,6 @@
 ---
 name: nomad-capture-ledger
-description: Capture bookkeeping input from OpenClaw into Nomad Finance OS using a safe two-step draft-and-confirm workflow. Use when a user sends expense/income/transfer text or OCR text and wants structured draft output, bilingual (ZH/EN) summaries, confirmation before write, and actionable recovery hints for provider/category/account errors.
+description: Capture bookkeeping input from OpenClaw into Nomad Finance OS using a safe two-step draft-and-confirm workflow. Use when a user sends expense/income/transfer text or OCR text and wants structured draft output, bilingual (ZH/EN) summaries, confirmation before write, and actionable recovery hints for category/account errors.
 ---
 
 # Nomad Capture Ledger
@@ -17,7 +17,6 @@ Set these environment variables before running scripts:
 
 - `NOMAD_API_BASE_URL` (required), for example `http://localhost:5001`
 - `NOMAD_USER_ID` (optional, default `1`)
-- `NOMAD_PROVIDER_ID` (optional)
 - `NOMAD_TIMEOUT_MS` (optional, default `15000`)
 
 ## Workflow
@@ -73,7 +72,6 @@ Keep structured keys in English. Keep readable summary bilingual.
 
 ## Failure Handling
 
-- If `400` contains `No active AI provider configured`, stop and instruct provider setup.
 - If category/account validation fails, return `lookup-context` suggestions and request corrected overrides.
 - If parse returns `502` twice, return manual-edit guidance with suggested override fields.
 

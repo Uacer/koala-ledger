@@ -33,11 +33,6 @@ Example confirmation prompt:
 
 ## Repair Prompts
 
-When provider is missing:
-
-- ZH: `当前未配置可用 AI Provider，请先在系统中创建并设为默认。`
-- EN: `No active AI provider is configured. Please create and set a default provider first.`
-
 When category/account is invalid:
 
 - Fetch categories/accounts and provide concise candidate options.

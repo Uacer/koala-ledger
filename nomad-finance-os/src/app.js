@@ -17,7 +17,6 @@ const {
   normalizeMonth
 } = require("./db");
 const { fetchFxRate, normalizeCurrency, peekRecentRate } = require("./fx");
-const { encryptText } = require("./security");
 const { buildExtractionDraft } = require("./ai");
 
 const FX_RATE_CACHE_TTL_MS = Math.max(
@@ -75,10 +74,7 @@ const ALLOWED_AGENT_SCOPES = new Set([
   "analytics:read",
   "export:read",
   "tags:read",
-  "admin:rebuild-balances",
-  "ai:providers:read",
-  "ai:providers:write",
-  "ai:providers:validate"
+  "admin:rebuild-balances"
 ]);
 
 function createApp(db) {
@@ -887,223 +883,27 @@ function createApp(db) {
     res.json(rows);
   });
 
-  app.post("/api/v1/ai/providers", (req, res) => {
-    const schema = z.object({
-      provider_type: z.string().min(1).max(32).default("openai_compatible"),
-      display_name: z.string().min(1).max(64),
-      base_url: z.string().url(),
-      model: z.string().min(1).max(128),
-      api_key: z.string().min(8).max(400)
-    });
-    const parsed = schema.safeParse(req.body);
-    if (!parsed.success) {
-      return res.status(400).json({ error: parsed.error.flatten() });
-    }
-    const payload = parsed.data;
-    const encrypted = encryptText(payload.api_key);
-    const last4 = payload.api_key.slice(-4);
-    const result = db
-      .prepare(
-        `
-          INSERT INTO ai_provider_credentials (
-            user_id, provider_type, display_name, base_url, model, encrypted_api_key, key_last4, active
-          ) VALUES (?, ?, ?, ?, ?, ?, ?, 1)
-        `
-      )
-      .run(
-        req.userId,
-        payload.provider_type,
-        payload.display_name,
-        payload.base_url,
-        payload.model,
-        encrypted,
-        last4
-      );
-    const providerId = Number(result.lastInsertRowid);
-    const settings = getUserSettings(db, req.userId);
-    if (!settings.default_ai_provider_id) {
-      db.prepare(
-        `
-          UPDATE user_settings
-          SET default_ai_provider_id = ?, updated_at = CURRENT_TIMESTAMP
-          WHERE user_id = ?
-        `
-      ).run(providerId, req.userId);
-    }
-    logEvent(db, req.userId, "ai_provider_created", {
-      provider_type: payload.provider_type
-    });
-    const created = getProviderPublicView(db, req.userId, providerId);
-    res.status(201).json(
-      created || {
-        id: providerId,
-        provider_type: payload.provider_type,
-        display_name: payload.display_name,
-        base_url: payload.base_url,
-        model: payload.model,
-        key_masked: `****${last4}`,
-        is_default: !settings.default_ai_provider_id
-      }
-    );
-  });
-
-  app.get("/api/v1/ai/providers", (req, res) => {
-    const settings = getUserSettings(db, req.userId);
-    const rows = db
-      .prepare(
-        `
-          SELECT id, provider_type, display_name, base_url, model, key_last4, active, created_at, updated_at
-          FROM ai_provider_credentials
-          WHERE user_id = ? AND active = 1
-          ORDER BY id DESC
-        `
-      )
-      .all(req.userId)
-      .map((row) => ({
-        ...row,
-        key_masked: `****${row.key_last4}`,
-        is_default: settings.default_ai_provider_id === row.id
-      }));
-    res.json(rows);
-  });
-
-  app.patch("/api/v1/ai/providers/:id", (req, res) => {
-    const providerId = Number.parseInt(req.params.id, 10);
-    if (!Number.isInteger(providerId) || providerId <= 0) {
-      return res.status(400).json({ error: "Invalid provider id." });
-    }
-    const schema = z.object({
-      display_name: z.string().min(1).max(64).optional(),
-      base_url: z.string().url().optional(),
-      model: z.string().min(1).max(128).optional(),
-      api_key: z.string().min(8).max(400).optional(),
-      active: z.boolean().optional()
-    });
-    const parsed = schema.safeParse(req.body);
-    if (!parsed.success) {
-      return res.status(400).json({ error: parsed.error.flatten() });
-    }
-    const payload = parsed.data;
-    const provider = getProviderInternal(db, req.userId, providerId);
-    if (!provider) {
-      return res.status(404).json({ error: "Provider not found." });
-    }
-
-    db.prepare(
-      `
-        UPDATE ai_provider_credentials
-        SET
-          display_name = ?,
-          base_url = ?,
-          model = ?,
-          encrypted_api_key = ?,
-          key_last4 = ?,
-          active = ?,
-          updated_at = CURRENT_TIMESTAMP
-        WHERE id = ? AND user_id = ?
-      `
-    ).run(
-      payload.display_name || provider.display_name,
-      payload.base_url || provider.base_url,
-      payload.model || provider.model,
-      payload.api_key ? encryptText(payload.api_key) : provider.encrypted_api_key,
-      payload.api_key ? payload.api_key.slice(-4) : provider.key_last4,
-      payload.active === undefined ? provider.active : payload.active ? 1 : 0,
-      providerId,
-      req.userId
-    );
-    res.json(getProviderPublicView(db, req.userId, providerId));
-  });
-
-  app.delete("/api/v1/ai/providers/:id", (req, res) => {
-    const providerId = Number.parseInt(req.params.id, 10);
-    const provider = getProviderInternal(db, req.userId, providerId);
-    if (!provider) {
-      return res.status(404).json({ error: "Provider not found." });
-    }
-    db.prepare(
-      "UPDATE ai_provider_credentials SET active = 0, updated_at = CURRENT_TIMESTAMP WHERE id = ? AND user_id = ?"
-    ).run(providerId, req.userId);
-    const settings = getUserSettings(db, req.userId);
-    if (settings.default_ai_provider_id === providerId) {
-      db.prepare(
-        "UPDATE user_settings SET default_ai_provider_id = NULL, updated_at = CURRENT_TIMESTAMP WHERE user_id = ?"
-      ).run(req.userId);
-    }
-    res.json({ ok: true });
-  });
-
-  app.post("/api/v1/ai/providers/:id/validate", async (req, res) => {
-    const providerId = Number.parseInt(req.params.id, 10);
-    const provider = getProviderInternal(db, req.userId, providerId);
-    if (!provider || !provider.active) {
-      return res.status(404).json({ error: "Provider not found." });
-    }
-    const categories = getCategoriesMap(db, req.userId);
-    const accounts = getAccounts(db, req.userId);
-    try {
-      await buildExtractionDraft({
-        provider,
-        text: "Lunch 12 USD at 7-Eleven",
-        categories,
-        accounts,
-        mode: "provider_only"
-      });
-      res.json({
-        ok: true,
-        fallback_used: false,
-        error_message: ""
-      });
-    } catch (error) {
-      res.status(502).json({
-        ok: false,
-        error: String(error.message || "Provider validation failed.")
-      });
-    }
-  });
-
-  app.post("/api/v1/ai/providers/:id/set-default", (req, res) => {
-    const providerId = Number.parseInt(req.params.id, 10);
-    const provider = getProviderInternal(db, req.userId, providerId);
-    if (!provider || !provider.active) {
-      return res.status(404).json({ error: "Provider not found." });
-    }
-    db.prepare(
-      "UPDATE user_settings SET default_ai_provider_id = ?, updated_at = CURRENT_TIMESTAMP WHERE user_id = ?"
-    ).run(providerId, req.userId);
-    res.json({ ok: true, default_ai_provider_id: providerId });
-  });
-
   app.post("/api/v1/transactions/parse-text", async (req, res) => {
     const schema = z.object({
-      text: z.string().min(1).max(2000),
-      provider_id: z.number().int().positive().optional()
+      text: z.string().min(1).max(2000)
     });
     const parsed = schema.safeParse(req.body);
     if (!parsed.success) {
       return res.status(400).json({ error: parsed.error.flatten() });
     }
     const input = parsed.data;
-    const provider = resolveProviderForUser(db, req.userId, input.provider_id);
-    if (!provider) {
-      return res.status(400).json({
-        error: "No active AI provider configured. Create and set a default provider first."
-      });
-    }
     const categories = getCategoriesMap(db, req.userId);
     const accounts = getAccounts(db, req.userId);
     let extraction;
     try {
       extraction = await buildExtractionDraft({
-        provider,
         text: input.text,
         imageBase64: null,
         categories,
-        accounts,
-        mode: "provider_only"
+        accounts
       });
     } catch (error) {
-      return res.status(502).json({
+      return res.status(resolveAiParseStatus(error)).json({
         error: String(error.message || "AI parsing failed.")
       });
     }
@@ -1118,7 +918,6 @@ function createApp(db) {
       raw_text: input.text,
       raw_image_base64: "",
       draft,
-      provider_credential_id: provider ? provider.id : null,
       error_message: extraction.error_message || ""
     });
     logEvent(db, req.userId, "capture_text_parsed", {
@@ -1141,8 +940,7 @@ function createApp(db) {
   app.post("/api/v1/transactions/parse-image", async (req, res) => {
     const schema = z.object({
       ocr_text: z.string().max(10000).optional(),
-      image_base64: z.string().max(5000000).optional(),
-      provider_id: z.number().int().positive().optional()
+      image_base64: z.string().max(5000000).optional()
     });
     const parsed = schema.safeParse(req.body);
     if (!parsed.success) {
@@ -1152,27 +950,19 @@ function createApp(db) {
     if ((!input.ocr_text || !String(input.ocr_text).trim()) && !input.image_base64) {
       return res.status(400).json({ error: "ocr_text or image_base64 is required." });
     }
-    const provider = resolveProviderForUser(db, req.userId, input.provider_id);
-    if (!provider) {
-      return res.status(400).json({
-        error: "No active AI provider configured. Create and set a default provider first."
-      });
-    }
     const categories = getCategoriesMap(db, req.userId);
     const accounts = getAccounts(db, req.userId);
     const text = input.ocr_text || "";
     let extraction;
     try {
       extraction = await buildExtractionDraft({
-        provider,
         text,
         imageBase64: input.image_base64 || null,
         categories,
-        accounts,
-        mode: "provider_only"
+        accounts
       });
     } catch (error) {
-      return res.status(502).json({
+      return res.status(resolveAiParseStatus(error)).json({
         error: String(error.message || "AI image parsing failed.")
       });
     }
@@ -1187,7 +977,6 @@ function createApp(db) {
       raw_text: text,
       raw_image_base64: input.image_base64 || "",
       draft,
-      provider_credential_id: provider ? provider.id : null,
       error_message: extraction.error_message || ""
     });
     logEvent(db, req.userId, "capture_image_parsed", {
@@ -1837,7 +1626,7 @@ function createApp(db) {
 function getUserSettings(db, userId) {
   const row = db
     .prepare(
-      "SELECT user_id, base_currency, timezone, ui_language, default_ai_provider_id FROM user_settings WHERE user_id = ?"
+      "SELECT user_id, base_currency, timezone, ui_language FROM user_settings WHERE user_id = ?"
     )
     .get(userId);
   if (!row) {
@@ -1849,8 +1638,7 @@ function getUserSettings(db, userId) {
     user_id: row.user_id,
     base_currency: SUPPORTED_CURRENCIES.includes(normalizedBase) ? normalizedBase : "USD",
     timezone: row.timezone || "UTC",
-    ui_language: row.ui_language === "zh" ? "zh" : "en",
-    default_ai_provider_id: row.default_ai_provider_id || null
+    ui_language: row.ui_language === "zh" ? "zh" : "en"
   };
 }
 
@@ -1912,42 +1700,6 @@ function isActiveL1(db, userId, categoryL1) {
     .prepare("SELECT id FROM expense_category_l1 WHERE user_id = ? AND name = ? AND active = 1")
     .get(userId, categoryL1);
   return Boolean(row);
-}
-
-function getProviderInternal(db, userId, providerId) {
-  return db
-    .prepare("SELECT * FROM ai_provider_credentials WHERE user_id = ? AND id = ?")
-    .get(userId, providerId);
-}
-
-function getProviderPublicView(db, userId, providerId) {
-  const settings = getUserSettings(db, userId);
-  const row = db
-    .prepare(
-      `
-        SELECT id, provider_type, display_name, base_url, model, key_last4, active, created_at, updated_at
-        FROM ai_provider_credentials
-        WHERE user_id = ? AND id = ?
-      `
-    )
-    .get(userId, providerId);
-  if (!row) return null;
-  return {
-    ...row,
-    key_masked: `****${row.key_last4}`,
-    is_default: settings.default_ai_provider_id === row.id
-  };
-}
-
-function resolveProviderForUser(db, userId, requestedProviderId) {
-  let providerId = requestedProviderId;
-  if (!providerId) {
-    providerId = getUserSettings(db, userId).default_ai_provider_id;
-  }
-  if (!providerId) return null;
-  const provider = getProviderInternal(db, userId, providerId);
-  if (!provider || !provider.active) return null;
-  return provider;
 }
 
 async function enrichDraftWithFx(db, userId, payload) {
@@ -2268,8 +2020,8 @@ function insertExtraction(db, userId, payload) {
     .prepare(
       `
         INSERT INTO ai_extractions (
-          user_id, source_type, raw_text, raw_image_base64, draft_json, status, provider_credential_id, error_message
-        ) VALUES (?, ?, ?, ?, ?, 'draft', ?, ?)
+          user_id, source_type, raw_text, raw_image_base64, draft_json, status, error_message
+        ) VALUES (?, ?, ?, ?, ?, 'draft', ?)
       `
     )
     .run(
@@ -2278,7 +2030,6 @@ function insertExtraction(db, userId, payload) {
       payload.raw_text || "",
       payload.raw_image_base64 || "",
       JSON.stringify(payload.draft),
-      payload.provider_credential_id,
       payload.error_message || ""
     );
   return db
@@ -2760,11 +2511,6 @@ function resolveRequiredScope(req) {
   if (path.startsWith("/api/v1/accounts/")) return method === "GET" ? "accounts:read" : "accounts:write";
   if (path === "/api/v1/admin/rebuild-balances") return "admin:rebuild-balances";
   if (path === "/api/v1/tags") return "tags:read";
-  if (path === "/api/v1/ai/providers") return method === "GET" ? "ai:providers:read" : "ai:providers:write";
-  if (path.startsWith("/api/v1/ai/providers/")) {
-    if (path.endsWith("/validate")) return "ai:providers:validate";
-    return method === "GET" ? "ai:providers:read" : "ai:providers:write";
-  }
   if (path === "/api/v1/transactions/parse-text" || path === "/api/v1/transactions/parse-image") {
     return "transactions:parse";
   }
@@ -2803,6 +2549,10 @@ function summarizeErrorForLog(error) {
 
 function resolveFxErrorStatus(error) {
   return String(error?.code || "") === "FX_QUOTE_UNAVAILABLE" ? 503 : 500;
+}
+
+function resolveAiParseStatus(error) {
+  return String(error?.code || "") === "AI_AGENT_NOT_CONFIGURED" ? 503 : 502;
 }
 
 function formatFxError(error) {

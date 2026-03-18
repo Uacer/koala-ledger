@@ -52,8 +52,6 @@ async function main() {
       ? options["allow-dev-bypass"]
       : process.env.NOMAD_ALLOW_DEV_BYPASS
   );
-  const providerId =
-    toPositiveInt(options["provider-id"]) || toPositiveInt(process.env.NOMAD_PROVIDER_ID);
   const timeoutMs =
     toPositiveInt(options["timeout-ms"]) || toPositiveInt(process.env.NOMAD_TIMEOUT_MS) || DEFAULT_TIMEOUT_MS;
   if (!apiToken && !allowDevBypass) {
@@ -73,7 +71,6 @@ async function main() {
       throw new Error("capture-text requires --message \"...\"");
     }
     const body = { text };
-    if (providerId) body.provider_id = providerId;
     const result = await parseWithRetry({
       baseUrl,
       timeoutMs,
@@ -92,7 +89,6 @@ async function main() {
       throw new Error("capture-ocr requires --ocr-text \"...\"");
     }
     const body = { ocr_text: ocrText };
-    if (providerId) body.provider_id = providerId;
     const result = await parseWithRetry({
       baseUrl,
       timeoutMs,
@@ -200,8 +196,8 @@ function buildDraftOutput(result) {
       zh: "请确认是否入账（回复：确认 / 取消）",
       en: "Please confirm posting (reply: confirm / cancel)."
     },
-    provider_fallback_used: Boolean(result.fallback_used),
-    provider_error_message: result.error_message || ""
+    ai_fallback_used: Boolean(result.fallback_used),
+    ai_error_message: result.error_message || ""
   };
 }
 
@@ -225,18 +221,6 @@ async function parseWithRetry(input) {
         throw error;
       }
       const message = getErrorMessage(error);
-      if (error.status === 400 && message.includes("No active AI provider configured")) {
-        printJson({
-          ok: false,
-          action: "draft",
-          error_code: "PROVIDER_MISSING",
-          error_message: message,
-          guidance_zh: "当前未配置可用 AI Provider，请先在系统中创建并设为默认。",
-          guidance_en: "No active AI provider is configured. Please create and set a default provider first."
-        });
-        process.exitCode = 1;
-        process.exit();
-      }
       if (error.status === 502 && attempt < maxAttempts) {
         continue;
       }
@@ -423,8 +407,8 @@ function printHelp() {
   const help = `nomad-capture-ledger client
 
 Commands:
-  capture-text --message "..." [--provider-id 3] [--api-token xxx] [--allow-dev-bypass true] [--user-id 1] [--timeout-ms 15000]
-  capture-ocr --ocr-text "..." [--provider-id 3] [--api-token xxx] [--allow-dev-bypass true] [--user-id 1] [--timeout-ms 15000]
+  capture-text --message "..." [--api-token xxx] [--allow-dev-bypass true] [--user-id 1] [--timeout-ms 15000]
+  capture-ocr --ocr-text "..." [--api-token xxx] [--allow-dev-bypass true] [--user-id 1] [--timeout-ms 15000]
   confirm --extraction-id 123 [--overrides-json '{"account_from_id":8}'] [--api-token xxx] [--allow-dev-bypass true] [--user-id 1]
   cancel --extraction-id 123
   lookup-context [--api-token xxx] [--allow-dev-bypass true] [--user-id 1]
@@ -434,7 +418,6 @@ Environment:
   NOMAD_API_TOKEN (recommended)
   NOMAD_ALLOW_DEV_BYPASS (default false; when true uses x-user-id fallback)
   NOMAD_USER_ID (dev bypass only, default 1)
-  NOMAD_PROVIDER_ID (optional)
   NOMAD_TIMEOUT_MS (default 15000)
 `;
   process.stdout.write(help);

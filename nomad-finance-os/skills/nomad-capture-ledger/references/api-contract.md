@@ -11,10 +11,6 @@ Dev-only fallback (when backend allows bypass):
 
 - `x-user-id: ${NOMAD_USER_ID:-1}`
 
-Optional parse header behavior:
-
-- If `NOMAD_PROVIDER_ID` is set, include `provider_id` in parse body.
-
 ## 1) Parse text
 
 `POST /api/v1/transactions/parse-text`
@@ -23,12 +19,9 @@ Body:
 
 ```json
 {
-  "text": "午饭220泰铢",
-  "provider_id": 3
+  "text": "午饭220泰铢"
 }
 ```
-
-`provider_id` is optional.
 
 Success `201`:
 
@@ -62,8 +55,7 @@ Body:
 
 ```json
 {
-  "ocr_text": "7-Eleven 120 THB",
-  "provider_id": 3
+  "ocr_text": "7-Eleven 120 THB"
 }
 ```
 
@@ -100,8 +92,6 @@ Use these two endpoints when category/account validation fails.
 
 ## Common Errors
 
-- `400 No active AI provider configured. Create and set a default provider first.`
-  - Action: stop parse/confirm and request provider setup.
 - `400 Invalid extraction payload.` or specific validation text
   - Action: fetch categories/accounts, request corrected overrides.
 - `502 AI parsing failed.` or `502 AI image parsing failed.`

@@ -6,8 +6,16 @@ const { createApp } = require("../src/app");
 
 function createHarness(options = {}) {
   const allowDevBypass = options.allowDevBypass !== undefined ? Boolean(options.allowDevBypass) : true;
+  const agentApiKey =
+    options.agentApiKey !== undefined ? String(options.agentApiKey || "") : "test-agent-key";
   const previousBypass = process.env.AUTH_ALLOW_DEV_BYPASS;
   process.env.AUTH_ALLOW_DEV_BYPASS = allowDevBypass ? "1" : "0";
+  if (agentApiKey) {
+    process.env.NOMAD_AGENT_API_KEY = agentApiKey;
+  } else {
+    delete process.env.NOMAD_AGENT_API_KEY;
+  }
+  delete process.env.OPENAI_API_KEY;
   const db = createDb(":memory:");
   const app = createApp(db);
   if (previousBypass === undefined) {
@@ -634,7 +642,7 @@ test("settings persists ui_language", async () => {
   assert.equal(after.body.ui_language, "zh");
 });
 
-test("BYOK provider CRUD + parse-text extraction + confirm flow", async () => {
+test("parse-text extraction + confirm flow", async () => {
   const { api } = createHarness();
   const date = "2026-03-10";
   const cash = await createAccount(api, {
@@ -644,20 +652,6 @@ test("BYOK provider CRUD + parse-text extraction + confirm flow", async () => {
     balance: 500
   });
   assert.ok(cash.id > 0);
-
-  const providerRes = await api.post("/api/v1/ai/providers").send({
-    provider_type: "openai_compatible",
-    display_name: "Demo Provider",
-    base_url: "https://example.com/v1",
-    model: "gpt-4.1-mini",
-    api_key: "sk-demo-secret-1234"
-  });
-  assert.equal(providerRes.status, 201);
-  assert.equal(providerRes.body.key_masked.endsWith("1234"), true);
-
-  const providers = await api.get("/api/v1/ai/providers").send();
-  assert.equal(providers.status, 200);
-  assert.equal(providers.body.length, 1);
 
   const parseRes = await withMockedFetchJson(
     {
@@ -676,11 +670,7 @@ test("BYOK provider CRUD + parse-text extraction + confirm flow", async () => {
         }
       ]
     },
-    async () =>
-      api.post("/api/v1/transactions/parse-text").send({
-        text: "Lunch 20 USD",
-        provider_id: providerRes.body.id
-      })
+    async () => api.post("/api/v1/transactions/parse-text").send({ text: "Lunch 20 USD" })
   );
   assert.equal(parseRes.status, 201);
   assert.ok(parseRes.body.extraction_id > 0);
@@ -726,13 +716,13 @@ test("yearly budgets + monthly snapshot generation", async () => {
   assert.equal(snapshotRes.body.month, month);
 });
 
-test("parse-image without provider is rejected (AI required)", async () => {
-  const { api } = createHarness();
+test("parse-image returns 503 when AI agent is not configured", async () => {
+  const { api } = createHarness({ agentApiKey: "" });
   const res = await api.post("/api/v1/transactions/parse-image").send({
     image_base64: "data:image/png;base64,AAA"
   });
-  assert.equal(res.status, 400);
-  assert.match(res.body.error, /No active AI provider configured/i);
+  assert.equal(res.status, 503);
+  assert.match(res.body.error, /AI agent is not configured/i);
 });
 
 test("analytics summary returns key event counters", async () => {
@@ -970,20 +960,11 @@ test("parse-text handles baht alias and maps travel phrase to lifestyle", async 
   });
   assert.ok(account.id > 0);
 
-  const providerRes = await api.post("/api/v1/ai/providers").send({
-    provider_type: "openai_compatible",
-    display_name: "Demo Provider",
-    base_url: "https://example.com/v1",
-    model: "gpt-4.1-mini",
-    api_key: "sk-demo-secret-5678"
-  });
-  assert.equal(providerRes.status, 201);
-
   const originalFetch = global.fetch;
   let parseRes;
   global.fetch = async (url) => {
     const href = String(url || "");
-    if (href.includes("example.com")) {
+    if (href.includes("/chat/completions")) {
       return {
         ok: true,
         status: 200,
@@ -1347,15 +1328,6 @@ test("bearer token supports parse -> confirm flow with default scopes", async ()
   });
   assert.equal(cashRes.status, 201);
 
-  const providerRes = await rawApi.post("/api/v1/ai/providers").send({
-    provider_type: "openai_compatible",
-    display_name: "Demo Provider",
-    base_url: "https://example.com/v1",
-    model: "gpt-4.1-mini",
-    api_key: "sk-demo-secret-1234"
-  });
-  assert.equal(providerRes.status, 201);
-
   const tokenRes = await rawApi.post("/api/v1/auth/agent-tokens").send({ name: "Parser Agent" });
   assert.equal(tokenRes.status, 201);
   const bearerApi = createBearerApiClient(request.agent(app), tokenRes.body.token);
@@ -1377,11 +1349,7 @@ test("bearer token supports parse -> confirm flow with default scopes", async ()
         }
       ]
     },
-    async () =>
-      bearerApi.post("/api/v1/transactions/parse-text").send({
-        text: "Lunch 20 USD",
-        provider_id: providerRes.body.id
-      })
+    async () => bearerApi.post("/api/v1/transactions/parse-text").send({ text: "Lunch 20 USD" })
   );
   assert.equal(parseRes.status, 201);
   assert.ok(parseRes.body.extraction_id > 0);
