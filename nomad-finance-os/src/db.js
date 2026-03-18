@@ -13,10 +13,93 @@ function createDb(filename = ":memory:") {
 }
 
 function runMigrations(db) {
+  ensureColumn(db, "users", "email", "TEXT");
   ensureColumn(db, "accounts", "opening_balance", "NUMERIC NOT NULL DEFAULT 0");
   ensureColumn(db, "user_settings", "ui_language", "TEXT NOT NULL DEFAULT 'en'");
   ensureColumn(db, "budgets", "budget_currency", "TEXT");
   ensureColumn(db, "yearly_budgets", "budget_currency", "TEXT");
+  db.exec(`
+    CREATE UNIQUE INDEX IF NOT EXISTS idx_users_email_nocase
+    ON users(email COLLATE NOCASE)
+    WHERE email IS NOT NULL
+  `);
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS auth_magic_links (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      user_id INTEGER NOT NULL,
+      email_normalized TEXT NOT NULL,
+      token_hash TEXT NOT NULL,
+      expires_at TEXT NOT NULL,
+      used_at TEXT,
+      revoked INTEGER NOT NULL DEFAULT 0,
+      requested_ip TEXT NOT NULL DEFAULT '',
+      user_agent TEXT NOT NULL DEFAULT '',
+      created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+    )
+  `);
+  db.exec(`
+    CREATE UNIQUE INDEX IF NOT EXISTS idx_auth_magic_links_hash ON auth_magic_links(token_hash)
+  `);
+  db.exec(`
+    CREATE INDEX IF NOT EXISTS idx_auth_magic_links_user ON auth_magic_links(user_id, created_at DESC)
+  `);
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS auth_sessions (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      user_id INTEGER NOT NULL,
+      session_hash TEXT NOT NULL,
+      expires_at TEXT NOT NULL,
+      revoked INTEGER NOT NULL DEFAULT 0,
+      last_seen_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+    )
+  `);
+  db.exec(`
+    CREATE UNIQUE INDEX IF NOT EXISTS idx_auth_sessions_hash ON auth_sessions(session_hash)
+  `);
+  db.exec(`
+    CREATE INDEX IF NOT EXISTS idx_auth_sessions_user ON auth_sessions(user_id, created_at DESC)
+  `);
+  ensureColumn(db, "auth_magic_links", "email_normalized", "TEXT");
+  ensureColumn(db, "auth_magic_links", "revoked", "INTEGER NOT NULL DEFAULT 0");
+  ensureColumn(db, "auth_magic_links", "requested_ip", "TEXT NOT NULL DEFAULT ''");
+  ensureColumn(db, "auth_sessions", "revoked", "INTEGER NOT NULL DEFAULT 0");
+  ensureColumn(db, "auth_sessions", "last_seen_at", "TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP");
+  if (hasColumn(db, "auth_magic_links", "email")) {
+    db.exec(`
+      UPDATE auth_magic_links
+      SET email_normalized = lower(email)
+      WHERE email_normalized IS NULL OR trim(email_normalized) = ''
+    `);
+  }
+  if (hasColumn(db, "auth_magic_links", "request_ip")) {
+    db.exec(`
+      UPDATE auth_magic_links
+      SET requested_ip = request_ip
+      WHERE requested_ip IS NULL OR trim(requested_ip) = ''
+    `);
+  }
+  if (hasColumn(db, "auth_magic_links", "invalidated_at")) {
+    db.exec(`
+      UPDATE auth_magic_links
+      SET revoked = 1
+      WHERE revoked = 0 AND invalidated_at IS NOT NULL
+    `);
+  }
+  if (hasColumn(db, "auth_sessions", "revoked_at")) {
+    db.exec(`
+      UPDATE auth_sessions
+      SET revoked = 1
+      WHERE revoked = 0 AND revoked_at IS NOT NULL
+    `);
+  }
+  db.exec(`
+    UPDATE auth_sessions
+    SET last_seen_at = created_at
+    WHERE last_seen_at IS NULL OR trim(last_seen_at) = ''
+  `);
 
   // Legacy budgets had no currency column. Default historical assumption is USD
   // because the product bootstraps users with USD as initial base currency.
@@ -38,6 +121,11 @@ function ensureColumn(db, table, column, ddl) {
   if (!exists) {
     db.exec(`ALTER TABLE ${table} ADD COLUMN ${column} ${ddl}`);
   }
+}
+
+function hasColumn(db, table, column) {
+  const rows = db.prepare(`PRAGMA table_info(${table})`).all();
+  return rows.some((row) => row.name === column);
 }
 
 function ensureUserAndSeedDefaults(db, userId) {
@@ -73,6 +161,30 @@ function ensureUserAndSeedDefaults(db, userId) {
 
 }
 
+function findOrCreateUserByEmail(db, email) {
+  const normalized = String(email || "").trim().toLowerCase();
+  if (!normalized) {
+    throw new Error("Email is required.");
+  }
+  const existing = db
+    .prepare("SELECT id, email, created_at FROM users WHERE lower(email) = lower(?)")
+    .get(normalized);
+  if (existing) {
+    ensureUserAndSeedDefaults(db, existing.id);
+    return existing;
+  }
+  const inserted = db.prepare("INSERT INTO users (email) VALUES (?)").run(normalized);
+  const user = db
+    .prepare("SELECT id, email, created_at FROM users WHERE id = ?")
+    .get(Number(inserted.lastInsertRowid));
+  ensureUserAndSeedDefaults(db, user.id);
+  return user;
+}
+
+function getUserById(db, userId) {
+  return db.prepare("SELECT id, email, created_at FROM users WHERE id = ?").get(userId) || null;
+}
+
 function normalizeMonth(month) {
   if (!month) return new Date().toISOString().slice(0, 7);
   return month.slice(0, 7);
@@ -81,5 +193,7 @@ function normalizeMonth(month) {
 module.exports = {
   createDb,
   ensureUserAndSeedDefaults,
+  findOrCreateUserByEmail,
+  getUserById,
   normalizeMonth
 };

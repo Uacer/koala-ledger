@@ -15,6 +15,13 @@ const state = {
   quickEntryMax: 0,
   quickEntryType: "expense",
   txTagFilter: "",
+  auth: {
+    ready: false,
+    authenticated: false,
+    user: null,
+    allowDevBypass: false,
+    devBypass: false
+  },
   latestExtractionId: null,
   latestExtractionDraft: null,
   trend: {
@@ -129,6 +136,13 @@ const I18N = {
     addExpense: "🧾 Add Expense",
     addIncome: "💰 Add Income",
     addTransfer: "🔁 Add Transfer",
+    authTitle: "Nomad Finance OS",
+    authSubtitle: "Sign in with your email magic link.",
+    authEmailLabel: "Email",
+    authSendBtn: "Send Magic Link",
+    authHint: "We'll send a sign-in link that expires in 15 minutes.",
+    authSent: "Magic link sent. Check your inbox.",
+    authSessionExpired: "Session expired. Please sign in again.",
     close: "Close",
     date: "Date",
     type: "Type",
@@ -169,6 +183,7 @@ const I18N = {
     showRisk: "Risk Metrics",
     showRecentExpenses: "Recent Transactions Card",
     showDebug: "Debug Panel",
+    logout: "Logout",
     debugPanel: "Debug Panel",
     debugOnlyFailed: "Only Failed",
     debugFilter: "Filter",
@@ -318,6 +333,13 @@ const I18N = {
     addExpense: "🧾 新增支出",
     addIncome: "💰 新增收入",
     addTransfer: "🔁 新增转账",
+    authTitle: "Nomad Finance OS",
+    authSubtitle: "使用邮箱 Magic Link 登录。",
+    authEmailLabel: "邮箱",
+    authSendBtn: "发送登录链接",
+    authHint: "我们会发送一个 15 分钟内有效的登录链接。",
+    authSent: "登录链接已发送，请检查邮箱。",
+    authSessionExpired: "登录已过期，请重新登录。",
     close: "关闭",
     date: "日期",
     type: "类型",
@@ -358,6 +380,7 @@ const I18N = {
     showRisk: "风险指标",
     showRecentExpenses: "最近交易卡片",
     showDebug: "调试面板",
+    logout: "退出登录",
     debugPanel: "调试面板",
     debugOnlyFailed: "仅失败",
     debugFilter: "过滤",
@@ -499,13 +522,27 @@ document.addEventListener("DOMContentLoaded", () => {
   bindUI();
   initializeDebugCapture();
   initializeQuickEntryDefaults();
-  loadAll();
+  void initializeAuthFlow();
 });
 
 function bindUI() {
   $("#reloadBtn").addEventListener("click", async () => {
     syncControlState();
     await loadAll();
+  });
+  const magicLinkForm = $("#magicLinkRequestForm");
+  if (magicLinkForm) {
+    magicLinkForm.addEventListener("submit", submitMagicLinkRequestForm);
+  }
+  const quickLogoutBtn = $("#quickLogoutBtn");
+  if (quickLogoutBtn) {
+    quickLogoutBtn.addEventListener("click", () => {
+      void logoutCurrentSession();
+    });
+  }
+  window.addEventListener("focus", () => {
+    if (state.auth.authenticated) return;
+    void resumeSessionIfAvailable();
   });
   $("#monthInput").addEventListener("change", async () => {
     syncControlState();
@@ -978,8 +1015,10 @@ function openSheet(id, options = {}) {
     if (monthInput) monthInput.value = state.month;
   }
   if (id === "settingsSheet") {
-    $("#quickSettingsForm [name=user_id]").value = String(state.userId);
+    const userInput = $("#quickSettingsForm [name=user_id]");
+    if (userInput) userInput.value = String(state.userId);
     $("#quickSettingsForm [name=ui_language]").value = ensureUILanguage(state.settings?.ui_language || "en");
+    syncDevBypassVisibility();
   }
   node.classList.remove("hidden");
   node.setAttribute("aria-hidden", "false");
@@ -1043,8 +1082,11 @@ function closeUtilityPanel() {
 }
 
 function syncControlState() {
-  const uid = Number($("#userIdInput").value || "1");
-  state.userId = Number.isInteger(uid) && uid > 0 ? uid : 1;
+  const uidInput = $("#userIdInput");
+  if (state.auth.allowDevBypass && !state.auth.authenticated && uidInput) {
+    const uid = Number(uidInput.value || "1");
+    state.userId = Number.isInteger(uid) && uid > 0 ? uid : 1;
+  }
   state.month = $("#monthInput").value || new Date().toISOString().slice(0, 7);
 }
 
@@ -1053,16 +1095,24 @@ async function api(path, init = {}) {
   const clientRequestId = generateClientRequestId();
   const startedAt = Date.now();
   const headers = {
-    "x-user-id": String(state.userId),
     "x-client-request-id": clientRequestId,
     ...(init.headers || {})
   };
+  if (
+    state.auth.allowDevBypass &&
+    state.auth.devBypass &&
+    !state.auth.authenticated &&
+    Number.isInteger(state.userId) &&
+    state.userId > 0
+  ) {
+    headers["x-user-id"] = String(state.userId);
+  }
   if (!headers["content-type"] && init.body !== undefined) {
     headers["content-type"] = "application/json";
   }
   let res;
   try {
-    res = await fetch(path, { ...init, headers });
+    res = await fetch(path, { ...init, headers, credentials: "same-origin" });
   } catch (networkError) {
     const durationMs = Date.now() - startedAt;
     const message = String(networkError?.message || "Network request failed.");
@@ -1110,6 +1160,13 @@ async function api(path, init = {}) {
     error.requestId = requestId;
     error.status = res.status;
     error.payload = payload;
+    if (res.status === 401) {
+      state.auth.authenticated = false;
+      showAuthGate();
+      closeAllSheets();
+      closeUtilityPanel();
+      showToast(t("authSessionExpired"), true);
+    }
     throw error;
   }
   recordRequestTrace({
@@ -1289,7 +1346,158 @@ async function copyDiagnosticsToClipboard() {
   }
 }
 
+async function initializeAuthFlow() {
+  syncControlState();
+  loadUiState();
+  applyI18n();
+  try {
+    await loadAuthSession();
+  } catch (error) {
+    showToast(formatErrorForToast(error), true);
+    showAuthGate();
+    return;
+  }
+  if (!state.auth.authenticated) {
+    showAuthGate();
+    return;
+  }
+  hideAuthGate();
+  await loadAll();
+}
+
+async function loadAuthSession() {
+  const response = await fetch("/api/v1/auth/session", {
+    method: "GET",
+    credentials: "same-origin",
+    cache: "no-store"
+  });
+  const payload = await safeJson(response);
+  if (!response.ok) {
+    const detail =
+      typeof payload?.error === "string"
+        ? payload.error
+        : payload?.error
+          ? JSON.stringify(payload.error)
+          : `${response.status} ${response.statusText}`;
+    const error = new Error(detail);
+    error.status = response.status;
+    throw error;
+  }
+  state.auth.allowDevBypass = Boolean(payload?.allow_dev_bypass);
+  state.auth.authenticated = Boolean(payload?.authenticated);
+  state.auth.devBypass = Boolean(payload?.dev_bypass);
+  state.auth.user = payload?.user || null;
+  if (state.auth.authenticated && Number.isInteger(Number(payload?.user?.id))) {
+    state.userId = Number(payload.user.id);
+    const userInput = $("#userIdInput");
+    if (userInput) userInput.value = String(state.userId);
+  }
+  syncDevBypassVisibility();
+  state.auth.ready = true;
+  return payload;
+}
+
+async function resumeSessionIfAvailable() {
+  try {
+    await loadAuthSession();
+  } catch {
+    return;
+  }
+  if (!state.auth.authenticated) return;
+  hideAuthGate();
+  await loadAll();
+}
+
+function showAuthGate() {
+  const gate = $("#authGate");
+  if (gate) {
+    gate.classList.remove("hidden");
+    gate.setAttribute("aria-hidden", "false");
+  }
+  document.body.classList.add("auth-required");
+  syncDevBypassVisibility();
+}
+
+function hideAuthGate() {
+  const gate = $("#authGate");
+  if (gate) {
+    gate.classList.add("hidden");
+    gate.setAttribute("aria-hidden", "true");
+  }
+  document.body.classList.remove("auth-required");
+  const authMessage = $("#authMessage");
+  if (authMessage) authMessage.textContent = "";
+}
+
+function syncDevBypassVisibility() {
+  const showBypass = Boolean(state.auth.allowDevBypass && !state.auth.authenticated);
+  const row = $("#quickSettingsUserRow");
+  if (row) row.classList.toggle("hidden", !showBypass);
+  const topUserInput = $("#userIdInput");
+  if (topUserInput) {
+    topUserInput.hidden = !showBypass;
+    topUserInput.value = String(state.userId);
+  }
+}
+
+async function submitMagicLinkRequestForm(event) {
+  event.preventDefault();
+  const form = event.currentTarget;
+  if (!(form instanceof HTMLFormElement)) return;
+  const button = $("#authRequestBtn");
+  const authMessage = $("#authMessage");
+  const fd = new FormData(form);
+  const email = String(fd.get("email") || "").trim();
+  if (!email) return;
+  if (button instanceof HTMLButtonElement) button.disabled = true;
+  try {
+    const response = await fetch("/api/v1/auth/magic-link/request", {
+      method: "POST",
+      credentials: "same-origin",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ email })
+    });
+    const payload = await safeJson(response);
+    if (!response.ok) {
+      const detail =
+        typeof payload?.error === "string"
+          ? payload.error
+          : payload?.error
+            ? JSON.stringify(payload.error)
+            : `${response.status} ${response.statusText}`;
+      throw new Error(detail);
+    }
+    if (authMessage) authMessage.textContent = t("authSent");
+    showToast(t("authSent"));
+  } catch (error) {
+    showToast(String(error?.message || "Failed to request magic link."), true);
+  } finally {
+    if (button instanceof HTMLButtonElement) button.disabled = false;
+  }
+}
+
+async function logoutCurrentSession() {
+  try {
+    await fetch("/api/v1/auth/logout", {
+      method: "POST",
+      credentials: "same-origin"
+    });
+  } catch {
+    // ignore network errors and still clear client auth state
+  }
+  state.auth.authenticated = false;
+  state.auth.user = null;
+  state.auth.devBypass = false;
+  closeSheet("settingsSheet");
+  closeAllSheets();
+  closeUtilityPanel();
+  showAuthGate();
+}
+
 async function loadAll() {
+  if (!state.auth.authenticated) {
+    return;
+  }
   try {
     syncControlState();
     loadUiState();
@@ -1325,7 +1533,8 @@ async function loadSettings() {
   $("#quickSettingsForm [name=ui_language]").value = uiLanguage;
   $("#quickSettingsForm [name=base_currency]").value = uiBase;
   $("#quickSettingsForm [name=timezone]").value = state.settings.timezone || "UTC";
-  $("#quickSettingsForm [name=user_id]").value = String(state.userId);
+  const quickUserIdInput = $("#quickSettingsForm [name=user_id]");
+  if (quickUserIdInput) quickUserIdInput.value = String(state.userId);
   $("#topBaseCurrencySelect").value = uiBase;
   const toggleCashFlow = $("#toggleCashFlow");
   const toggleRisk = $("#toggleRisk");
@@ -1342,6 +1551,7 @@ async function loadSettings() {
   if (debugOnlyFailed) debugOnlyFailed.checked = Boolean(state.debug.onlyFailed);
   if (debugFilterInput) debugFilterInput.value = state.debug.filter || "";
   applyQuickEntryPreferencesForType(state.quickEntryType || "expense");
+  syncDevBypassVisibility();
   applyAdvancedVisibility();
   renderDebugPanel();
   applyI18n();
@@ -2563,9 +2773,12 @@ async function submitQuickSettingsForm(event) {
   const form = event.currentTarget;
   if (!(form instanceof HTMLFormElement)) return;
   const fd = new FormData(form);
-  const nextUserId = Math.max(1, Number(fd.get("user_id") || 1));
-  $("#userIdInput").value = String(nextUserId);
-  state.userId = nextUserId;
+  if (state.auth.allowDevBypass && !state.auth.authenticated) {
+    const nextUserId = Math.max(1, Number(fd.get("user_id") || 1));
+    $("#userIdInput").value = String(nextUserId);
+    state.userId = nextUserId;
+    state.auth.devBypass = true;
+  }
   try {
     await api("/api/v1/settings", {
       method: "PUT",
@@ -3811,6 +4024,11 @@ function setAttr(id, name, value) {
 }
 
 function applyI18n() {
+  setText("authTitle", t("authTitle"));
+  setText("authSubtitle", t("authSubtitle"));
+  setText("authEmailLabel", t("authEmailLabel"));
+  setText("authRequestBtn", t("authSendBtn"));
+  setText("authHint", t("authHint"));
   setText("subtitleText", t("subtitle"));
   setText("monthLabelText", t("month"));
   setText("dashboardTitle", t("dashboard"));
@@ -3893,6 +4111,7 @@ function applyI18n() {
   setText("debugRequestsTitle", t("debugRequests"));
   setText("debugRuntimeTitle", t("debugRuntime"));
   setText("quickSettingsSaveBtn", t("saveSettings"));
+  setText("quickLogoutBtn", t("logout"));
   setText("settingsLinkBudget", t("advancedBudget"));
   setText("settingsLinkAccounts", t("accounts"));
   setText("settingsLinkReview", t("monthlyReview"));
