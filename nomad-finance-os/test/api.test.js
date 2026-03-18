@@ -7,8 +7,18 @@ const { createApp } = require("../src/app");
 function createHarness() {
   const db = createDb(":memory:");
   const app = createApp(db);
-  const api = request(app);
-  return { db, api };
+  const rawApi = request.agent(app);
+  const api = createBypassApiClient(rawApi, 1);
+  return { db, api, rawApi };
+}
+
+function createBypassApiClient(rawApi, userId = 1) {
+  const methods = ["get", "post", "put", "patch", "delete"];
+  const wrapped = {};
+  for (const method of methods) {
+    wrapped[method] = (url) => rawApi[method](url).set("x-user-id", String(userId));
+  }
+  return wrapped;
 }
 
 async function withMockedFetchJson(jsonPayload, fn) {
@@ -1149,4 +1159,81 @@ test("crypto exposure never negative even when net worth is negative", async () 
   assert.equal(riskRes.status, 200);
   assert.ok(riskRes.body.crypto_exposure >= 0);
   assert.ok(riskRes.body.crypto_exposure <= 1);
+});
+
+test("api requires auth when no session and no bypass header", async () => {
+  const { rawApi } = createHarness();
+  const res = await rawApi.get("/api/v1/settings").send();
+  assert.equal(res.status, 401);
+});
+
+test("magic link request -> verify -> session login -> logout flow", async () => {
+  const previousResendKey = process.env.RESEND_API_KEY;
+  const previousResendFrom = process.env.RESEND_FROM_EMAIL;
+  process.env.RESEND_API_KEY = "re_test_key";
+  process.env.RESEND_FROM_EMAIL = "noreply@example.com";
+  const originalFetch = global.fetch;
+  let lastEmailPayload = null;
+  global.fetch = async (url, init) => {
+    const href = String(url || "");
+    if (!href.includes("api.resend.com/emails")) {
+      throw new Error(`Unexpected URL in mocked fetch: ${href}`);
+    }
+    lastEmailPayload = JSON.parse(String(init?.body || "{}"));
+    return {
+      ok: true,
+      status: 200,
+      json: async () => ({ id: "mail_mock_1" })
+    };
+  };
+
+  try {
+    const { rawApi } = createHarness();
+    const requestRes = await rawApi.post("/api/v1/auth/magic-link/request").send({
+      email: "TeSt+login@example.com"
+    });
+    assert.equal(requestRes.status, 200);
+    assert.ok(lastEmailPayload);
+    const text = String(lastEmailPayload.text || "");
+    const linkMatch = text.match(/https?:\/\/\S+\/auth\/magic-link\/verify\?token=[^\s]+/);
+    assert.ok(linkMatch && linkMatch[0], "magic link should exist in resend payload");
+
+    const verifyUrl = new URL(linkMatch[0]);
+    const verifyRes = await rawApi.get(`${verifyUrl.pathname}${verifyUrl.search}`).send();
+    assert.equal(verifyRes.status, 302);
+    assert.match(String(verifyRes.headers["set-cookie"] || ""), /nfos_session=/);
+
+    const sessionRes = await rawApi.get("/api/v1/auth/session").send();
+    assert.equal(sessionRes.status, 200);
+    assert.equal(sessionRes.body.authenticated, true);
+    assert.equal(sessionRes.body.user.email, "test+login@example.com");
+
+    const protectedRes = await rawApi.get("/api/v1/settings").send();
+    assert.equal(protectedRes.status, 200);
+
+    const repeatVerify = await rawApi.get(`${verifyUrl.pathname}${verifyUrl.search}`).send();
+    assert.equal(repeatVerify.status, 400);
+
+    const logoutRes = await rawApi.post("/api/v1/auth/logout").send();
+    assert.equal(logoutRes.status, 200);
+
+    const sessionAfterLogout = await rawApi.get("/api/v1/auth/session").send();
+    assert.equal(sessionAfterLogout.status, 200);
+    assert.equal(sessionAfterLogout.body.authenticated, false);
+
+    const protectedAfterLogout = await rawApi.get("/api/v1/settings").send();
+    assert.equal(protectedAfterLogout.status, 401);
+  } finally {
+    global.fetch = originalFetch;
+    if (previousResendKey === undefined) {
+      delete process.env.RESEND_API_KEY;
+    } else {
+      process.env.RESEND_API_KEY = previousResendKey;
+    }
+    if (previousResendFrom === undefined) {
+      delete process.env.RESEND_FROM_EMAIL;
+    } else {
+      process.env.RESEND_FROM_EMAIL = previousResendFrom;
+    }
+  }
 });

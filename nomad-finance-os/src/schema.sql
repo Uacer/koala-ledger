@@ -2,8 +2,13 @@ PRAGMA foreign_keys = ON;
 
 CREATE TABLE IF NOT EXISTS users (
     id INTEGER PRIMARY KEY,
+    email TEXT UNIQUE,
     created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
+
+CREATE UNIQUE INDEX IF NOT EXISTS idx_users_email_nocase
+ON users(email COLLATE NOCASE)
+WHERE email IS NOT NULL;
 
 CREATE TABLE IF NOT EXISTS accounts (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -154,6 +159,37 @@ CREATE TABLE IF NOT EXISTS ai_extractions (
 );
 
 CREATE INDEX IF NOT EXISTS idx_ai_extractions_user ON ai_extractions(user_id);
+
+CREATE TABLE IF NOT EXISTS auth_magic_links (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    user_id INTEGER NOT NULL,
+    email_normalized TEXT NOT NULL,
+    token_hash TEXT NOT NULL,
+    expires_at TEXT NOT NULL,
+    used_at TEXT,
+    revoked INTEGER NOT NULL DEFAULT 0,
+    requested_ip TEXT NOT NULL DEFAULT '',
+    user_agent TEXT NOT NULL DEFAULT '',
+    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+);
+
+CREATE UNIQUE INDEX IF NOT EXISTS idx_auth_magic_links_hash ON auth_magic_links(token_hash);
+CREATE INDEX IF NOT EXISTS idx_auth_magic_links_user ON auth_magic_links(user_id, created_at DESC);
+
+CREATE TABLE IF NOT EXISTS auth_sessions (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    user_id INTEGER NOT NULL,
+    session_hash TEXT NOT NULL,
+    expires_at TEXT NOT NULL,
+    revoked INTEGER NOT NULL DEFAULT 0,
+    last_seen_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+);
+
+CREATE UNIQUE INDEX IF NOT EXISTS idx_auth_sessions_hash ON auth_sessions(session_hash);
+CREATE INDEX IF NOT EXISTS idx_auth_sessions_user ON auth_sessions(user_id, created_at DESC);
 
 CREATE TABLE IF NOT EXISTS monthly_review_snapshots (
     id INTEGER PRIMARY KEY AUTOINCREMENT,

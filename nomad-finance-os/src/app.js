@@ -1,5 +1,5 @@
 const path = require("node:path");
-const { randomUUID } = require("node:crypto");
+const { createHash, randomBytes, randomUUID } = require("node:crypto");
 const express = require("express");
 const { z } = require("zod");
 const {
@@ -10,7 +10,12 @@ const {
   TRANSFER_REASONS,
   TRANSACTION_TYPES
 } = require("./constants");
-const { ensureUserAndSeedDefaults, normalizeMonth } = require("./db");
+const {
+  ensureUserAndSeedDefaults,
+  findOrCreateUserByEmail,
+  getUserById,
+  normalizeMonth
+} = require("./db");
 const { fetchFxRate, normalizeCurrency, peekRecentRate } = require("./fx");
 const { encryptText } = require("./security");
 const { buildExtractionDraft } = require("./ai");
@@ -26,9 +31,49 @@ const FX_CONVERT_MAX_AGE_MS = Math.max(
   Number.parseInt(String(process.env.FX_CONVERT_MAX_AGE_MS || `${36 * 60 * 60 * 1000}`), 10) ||
     36 * 60 * 60 * 1000
 );
+const AUTH_ALLOW_DEV_BYPASS = parseEnvBoolean(
+  process.env.AUTH_ALLOW_DEV_BYPASS,
+  process.env.NODE_ENV !== "production"
+);
+const MAGIC_LINK_TTL_MINUTES = Math.max(
+  5,
+  Number.parseInt(String(process.env.MAGIC_LINK_TTL_MINUTES || "15"), 10) || 15
+);
+const AUTH_SESSION_TTL_DAYS = Math.max(
+  1,
+  Number.parseInt(String(process.env.AUTH_SESSION_TTL_DAYS || "7"), 10) || 7
+);
+const MAGIC_LINK_RATE_LIMIT_WINDOW_MS = Math.max(
+  10_000,
+  Number.parseInt(String(process.env.MAGIC_LINK_RATE_LIMIT_WINDOW_MS || "60000"), 10) || 60_000
+);
+const MAGIC_LINK_RATE_LIMIT_MAX = Math.max(
+  1,
+  Number.parseInt(String(process.env.MAGIC_LINK_RATE_LIMIT_MAX || "5"), 10) || 5
+);
+const SESSION_COOKIE_NAME = "nfos_session";
+const MAGIC_LINK_RATE_LIMIT = new Map();
 
 function createApp(db) {
   const app = express();
+  const authMagicHasLegacyEmail = tableHasColumn(db, "auth_magic_links", "email");
+  const insertMagicLinkStmt = authMagicHasLegacyEmail
+    ? db.prepare(
+        `
+          INSERT INTO auth_magic_links (
+            user_id, email, email_normalized, token_hash, expires_at, requested_ip, user_agent
+          )
+          VALUES (?, ?, ?, ?, ?, ?, ?)
+        `
+      )
+    : db.prepare(
+        `
+          INSERT INTO auth_magic_links (
+            user_id, email_normalized, token_hash, expires_at, requested_ip, user_agent
+          )
+          VALUES (?, ?, ?, ?, ?, ?)
+        `
+      );
   app.use(express.json({ limit: "8mb" }));
   app.use(express.static(path.join(__dirname, "public")));
   app.use((req, res, next) => {
@@ -74,17 +119,171 @@ function createApp(db) {
   });
 
   app.use((req, res, next) => {
-    const rawUserId = req.header("x-user-id") || "1";
-    const userId = Number.parseInt(rawUserId, 10);
-    if (!Number.isInteger(userId) || userId <= 0) {
-      return res.status(400).json({ error: "Invalid x-user-id header." });
+    const isApi = req.path.startsWith("/api/v1/");
+    const isVerifyPath = req.path === "/auth/magic-link/verify";
+    if (!isApi && !isVerifyPath) return next();
+
+    const sessionToken = getCookie(req, SESSION_COOKIE_NAME);
+    if (sessionToken) {
+      const session = resolveSession(db, sessionToken);
+      if (session) {
+        req.userId = session.user_id;
+        req.userEmail = session.email || "";
+        req.isAuthenticated = true;
+        ensureUserAndSeedDefaults(db, session.user_id);
+      }
     }
-    req.userId = userId;
-    ensureUserAndSeedDefaults(db, userId);
+
+    if (!req.userId && AUTH_ALLOW_DEV_BYPASS) {
+      const rawUserId = String(req.header("x-user-id") || "").trim();
+      if (rawUserId) {
+        const userId = Number.parseInt(rawUserId, 10);
+        if (!Number.isInteger(userId) || userId <= 0) {
+          return res.status(400).json({ error: "Invalid x-user-id header." });
+        }
+        req.userId = userId;
+        req.userEmail = "";
+        req.isAuthenticated = true;
+        req.isDevBypass = true;
+        ensureUserAndSeedDefaults(db, userId);
+      }
+    }
+
+    if (!isApi) return next();
+
+    if (
+      req.path === "/api/v1/auth/magic-link/request" ||
+      req.path === "/api/v1/auth/session" ||
+      req.path === "/api/v1/auth/logout"
+    ) {
+      return next();
+    }
+    if (!req.userId) {
+      return res.status(401).json({ error: "Authentication required." });
+    }
     return next();
   });
 
   app.get("/health", (_req, res) => {
+    res.json({ ok: true });
+  });
+
+  app.post("/api/v1/auth/magic-link/request", async (req, res) => {
+    res.setHeader("Cache-Control", "no-store");
+    const schema = z.object({ email: z.string().trim().toLowerCase().email().max(320) });
+    const parsed = schema.safeParse(req.body || {});
+    if (!parsed.success) {
+      return res.status(400).json({ error: parsed.error.flatten() });
+    }
+    const email = normalizeEmail(parsed.data.email);
+    const ip = extractClientIp(req);
+    const userAgent = String(req.header("user-agent") || "").slice(0, 250);
+    if (!consumeMagicLinkRateLimit(`email:${email}`) || !consumeMagicLinkRateLimit(`ip:${ip}`)) {
+      return res.status(429).json({ error: "Too many magic link requests. Please try again later." });
+    }
+
+    const user = findOrCreateUserByEmail(db, email);
+    ensureUserAndSeedDefaults(db, user.id);
+    revokePendingMagicLinks(db, user.id);
+
+    const token = randomToken();
+    const tokenHash = hashToken(token);
+    const expiresAt = new Date(Date.now() + MAGIC_LINK_TTL_MINUTES * 60 * 1000).toISOString();
+    if (authMagicHasLegacyEmail) {
+      insertMagicLinkStmt.run(user.id, email, email, tokenHash, expiresAt, ip, userAgent);
+    } else {
+      insertMagicLinkStmt.run(user.id, email, tokenHash, expiresAt, ip, userAgent);
+    }
+
+    const verifyUrl = buildMagicLinkUrl(req, token);
+    try {
+      await sendMagicLinkEmail(email, verifyUrl);
+    } catch (error) {
+      return res.status(502).json({ error: String(error?.message || "Email delivery failed.") });
+    }
+    return res.json({
+      ok: true,
+      message: "If this email is valid, a sign-in link has been sent."
+    });
+  });
+
+  app.get("/auth/magic-link/verify", (req, res) => {
+    const token = String(req.query.token || "").trim();
+    if (!token) {
+      return res.status(400).send(renderAuthResultHtml(false, "Missing token."));
+    }
+    const magic = consumeMagicLink(db, token);
+    if (!magic) {
+      return res.status(400).send(renderAuthResultHtml(false, "Magic link is invalid or expired."));
+    }
+    ensureUserAndSeedDefaults(db, magic.user_id);
+
+    const sessionToken = randomToken();
+    const sessionHash = hashToken(sessionToken);
+    const expiresAt = new Date(Date.now() + AUTH_SESSION_TTL_DAYS * 24 * 60 * 60 * 1000).toISOString();
+    db.prepare(
+      `
+        INSERT INTO auth_sessions (user_id, session_hash, expires_at, revoked, last_seen_at)
+        VALUES (?, ?, ?, 0, CURRENT_TIMESTAMP)
+      `
+    ).run(magic.user_id, sessionHash, expiresAt);
+
+    res.setHeader(
+      "Set-Cookie",
+      serializeCookie(SESSION_COOKIE_NAME, sessionToken, {
+        maxAgeSec: AUTH_SESSION_TTL_DAYS * 24 * 60 * 60,
+        httpOnly: true,
+        sameSite: "Lax",
+        secure: isSecureCookieRequest(req),
+        path: "/"
+      })
+    );
+    return res.redirect(302, resolveAppBaseUrl(req));
+  });
+
+  app.get("/api/v1/auth/session", (req, res) => {
+    res.setHeader("Cache-Control", "no-store");
+    if (!req.userId) {
+      return res.json({
+        authenticated: false,
+        allow_dev_bypass: AUTH_ALLOW_DEV_BYPASS
+      });
+    }
+    const user = getUserById(db, req.userId);
+    return res.json({
+      authenticated: true,
+      allow_dev_bypass: AUTH_ALLOW_DEV_BYPASS,
+      dev_bypass: Boolean(req.isDevBypass),
+      user: {
+        id: req.userId,
+        email: user?.email || req.userEmail || ""
+      }
+    });
+  });
+
+  app.post("/api/v1/auth/logout", (req, res) => {
+    res.setHeader("Cache-Control", "no-store");
+    const sessionToken = getCookie(req, SESSION_COOKIE_NAME);
+    if (sessionToken) {
+      const sessionHash = hashToken(sessionToken);
+      db.prepare(
+        `
+          UPDATE auth_sessions
+          SET revoked = 1, last_seen_at = CURRENT_TIMESTAMP
+          WHERE session_hash = ?
+        `
+      ).run(sessionHash);
+    }
+    res.setHeader(
+      "Set-Cookie",
+      serializeCookie(SESSION_COOKIE_NAME, "", {
+        maxAgeSec: 0,
+        httpOnly: true,
+        sameSite: "Lax",
+        secure: isSecureCookieRequest(req),
+        path: "/"
+      })
+    );
     res.json({ ok: true });
   });
 
@@ -2607,6 +2806,267 @@ function rebuildUserBalances(db, userId) {
       recalculated_balance: Number(row.recalculated.toFixed(8))
     }))
   };
+}
+
+function parseEnvBoolean(value, fallback = false) {
+  if (value === undefined || value === null || value === "") return fallback;
+  const normalized = String(value).trim().toLowerCase();
+  if (["1", "true", "yes", "on"].includes(normalized)) return true;
+  if (["0", "false", "no", "off"].includes(normalized)) return false;
+  return fallback;
+}
+
+function tableHasColumn(db, table, column) {
+  const rows = db.prepare(`PRAGMA table_info(${table})`).all();
+  return rows.some((row) => row.name === column);
+}
+
+function normalizeEmail(value) {
+  return String(value || "").trim().toLowerCase();
+}
+
+function randomToken() {
+  return randomBytes(32).toString("base64url");
+}
+
+function hashToken(value) {
+  return createHash("sha256").update(String(value || "")).digest("hex");
+}
+
+function consumeMagicLinkRateLimit(key) {
+  const safeKey = String(key || "").trim();
+  if (!safeKey) return false;
+  const now = Date.now();
+  const threshold = now - MAGIC_LINK_RATE_LIMIT_WINDOW_MS;
+  const prior = Array.isArray(MAGIC_LINK_RATE_LIMIT.get(safeKey))
+    ? MAGIC_LINK_RATE_LIMIT.get(safeKey)
+    : [];
+  const recent = prior.filter((time) => Number(time) > threshold);
+  if (recent.length >= MAGIC_LINK_RATE_LIMIT_MAX) {
+    MAGIC_LINK_RATE_LIMIT.set(safeKey, recent);
+    return false;
+  }
+  recent.push(now);
+  MAGIC_LINK_RATE_LIMIT.set(safeKey, recent);
+  return true;
+}
+
+function extractClientIp(req) {
+  const forwarded = String(req.header("x-forwarded-for") || "")
+    .split(",")
+    .map((x) => x.trim())
+    .filter(Boolean)[0];
+  return forwarded || req.ip || req.socket?.remoteAddress || "";
+}
+
+function buildMagicLinkUrl(req, token) {
+  const appBase = resolveAppBaseUrl(req).replace(/\/+$/, "");
+  return `${appBase}/auth/magic-link/verify?token=${encodeURIComponent(token)}`;
+}
+
+function resolveAppBaseUrl(req) {
+  const configured = String(process.env.APP_BASE_URL || "").trim();
+  if (configured) return configured.replace(/\/+$/, "");
+  const protocol = req.protocol || "http";
+  const host = req.get("host") || "localhost:5001";
+  return `${protocol}://${host}`;
+}
+
+function getCookie(req, name) {
+  const cookies = parseCookies(req.header("cookie"));
+  return cookies[String(name || "")] || "";
+}
+
+function parseCookies(rawCookieHeader) {
+  const output = {};
+  const raw = String(rawCookieHeader || "");
+  if (!raw) return output;
+  for (const piece of raw.split(";")) {
+    const segment = piece.trim();
+    if (!segment) continue;
+    const index = segment.indexOf("=");
+    if (index <= 0) continue;
+    const key = segment.slice(0, index).trim();
+    const value = segment.slice(index + 1).trim();
+    if (!key) continue;
+    try {
+      output[key] = decodeURIComponent(value);
+    } catch {
+      output[key] = value;
+    }
+  }
+  return output;
+}
+
+function serializeCookie(name, value, options = {}) {
+  const parts = [`${name}=${encodeURIComponent(String(value || ""))}`];
+  parts.push(`Path=${options.path || "/"}`);
+  if (Number.isFinite(Number(options.maxAgeSec))) {
+    parts.push(`Max-Age=${Math.max(0, Math.floor(Number(options.maxAgeSec)))}`);
+  }
+  if (options.httpOnly !== false) parts.push("HttpOnly");
+  parts.push(`SameSite=${options.sameSite || "Lax"}`);
+  if (options.secure) parts.push("Secure");
+  return parts.join("; ");
+}
+
+function isSecureCookieRequest(req) {
+  if (process.env.NODE_ENV === "production") return true;
+  return Boolean(req.secure);
+}
+
+function revokePendingMagicLinks(db, userId) {
+  db.prepare(
+    `
+      UPDATE auth_magic_links
+      SET revoked = 1
+      WHERE user_id = ? AND used_at IS NULL AND revoked = 0
+    `
+  ).run(userId);
+}
+
+function consumeMagicLink(db, token) {
+  const tokenHash = hashToken(token);
+  const row = db
+    .prepare(
+      `
+        SELECT id, user_id, expires_at, used_at, revoked
+        FROM auth_magic_links
+        WHERE token_hash = ?
+      `
+    )
+    .get(tokenHash);
+  if (!row) return null;
+  if (Number(row.revoked || 0) !== 0) return null;
+  if (row.used_at) return null;
+  const expiresAt = Date.parse(String(row.expires_at || ""));
+  if (!Number.isFinite(expiresAt) || expiresAt <= Date.now()) return null;
+  const updated = db
+    .prepare(
+      `
+        UPDATE auth_magic_links
+        SET used_at = CURRENT_TIMESTAMP
+        WHERE id = ? AND used_at IS NULL AND revoked = 0
+      `
+    )
+    .run(row.id);
+  if (!Number(updated.changes || 0)) return null;
+  return row;
+}
+
+function resolveSession(db, sessionToken) {
+  const hash = hashToken(sessionToken);
+  const row = db
+    .prepare(
+      `
+        SELECT s.id, s.user_id, s.expires_at, s.revoked, u.email
+        FROM auth_sessions s
+        JOIN users u ON u.id = s.user_id
+        WHERE s.session_hash = ?
+      `
+    )
+    .get(hash);
+  if (!row) return null;
+  if (Number(row.revoked || 0) !== 0) return null;
+  const expiresAt = Date.parse(String(row.expires_at || ""));
+  if (!Number.isFinite(expiresAt) || expiresAt <= Date.now()) {
+    db.prepare(
+      `
+        UPDATE auth_sessions
+        SET revoked = 1, last_seen_at = CURRENT_TIMESTAMP
+        WHERE id = ?
+      `
+    ).run(row.id);
+    return null;
+  }
+  db.prepare("UPDATE auth_sessions SET last_seen_at = CURRENT_TIMESTAMP WHERE id = ?").run(row.id);
+  return row;
+}
+
+async function sendMagicLinkEmail(email, verifyUrl) {
+  const resendApiKey = String(process.env.RESEND_API_KEY || "").trim();
+  const resendFrom = String(process.env.RESEND_FROM_EMAIL || "").trim();
+  if (!resendApiKey || !resendFrom) {
+    console.log(`[magic-link] resend not configured. url=${verifyUrl}`);
+    return;
+  }
+  const subject = "Your Nomad Finance OS sign-in link";
+  const text = [
+    "Use the link below to sign in to Nomad Finance OS:",
+    verifyUrl,
+    "",
+    `This link expires in ${MAGIC_LINK_TTL_MINUTES} minutes.`
+  ].join("\n");
+  const html = `
+    <div style="font-family: -apple-system, Segoe UI, sans-serif; line-height: 1.5; color: #221d18;">
+      <p>Use this link to sign in to <strong>Nomad Finance OS</strong>:</p>
+      <p><a href="${escapeHtml(verifyUrl)}">${escapeHtml(verifyUrl)}</a></p>
+      <p>This link expires in ${MAGIC_LINK_TTL_MINUTES} minutes.</p>
+    </div>
+  `;
+  const response = await fetch("https://api.resend.com/emails", {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      Authorization: `Bearer ${resendApiKey}`
+    },
+    body: JSON.stringify({
+      from: resendFrom,
+      to: [email],
+      subject,
+      text,
+      html
+    })
+  });
+  if (!response.ok) {
+    const payload = await safeJsonParse(response);
+    const error = new Error(
+      `Magic link email failed (${response.status}): ${summarizeErrorForLog(payload?.message || payload?.error || payload)}`
+    );
+    error.status = response.status;
+    throw error;
+  }
+}
+
+async function safeJsonParse(response) {
+  try {
+    return await response.json();
+  } catch {
+    return null;
+  }
+}
+
+function escapeHtml(value) {
+  return String(value || "")
+    .replaceAll("&", "&amp;")
+    .replaceAll("<", "&lt;")
+    .replaceAll(">", "&gt;")
+    .replaceAll('"', "&quot;")
+    .replaceAll("'", "&#039;");
+}
+
+function renderAuthResultHtml(ok, message) {
+  const safeMessage = escapeHtml(message || "");
+  const title = ok ? "Login Success" : "Login Failed";
+  return `<!doctype html>
+<html>
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width,initial-scale=1" />
+    <title>${escapeHtml(title)}</title>
+    <style>
+      body { font-family: -apple-system, Segoe UI, sans-serif; padding: 24px; background: #f3ede2; color: #221d18; }
+      .card { max-width: 560px; margin: 0 auto; padding: 16px; border: 1px solid #d9d0c2; border-radius: 12px; background: #fffaf2; }
+    </style>
+  </head>
+  <body>
+    <div class="card">
+      <h2>${escapeHtml(title)}</h2>
+      <p>${safeMessage}</p>
+      <p><a href="/">Back to app</a></p>
+    </div>
+  </body>
+</html>`;
 }
 
 module.exports = {

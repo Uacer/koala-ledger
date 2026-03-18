@@ -14,6 +14,29 @@
   </head>
   <body>
     <div class="noise"></div>
+    <section id="authGate" class="auth-gate hidden" aria-hidden="true">
+      <article class="auth-card">
+        <h1 id="authTitle">Nomad Finance OS</h1>
+        <p id="authSubtitle">Sign in with your email magic link.</p>
+        <form id="magicLinkRequestForm" class="auth-form">
+          <label>
+            <span id="authEmailLabel">Email</span>
+            <input
+              id="authEmailInput"
+              name="email"
+              type="email"
+              maxlength="320"
+              autocomplete="email"
+              required
+              placeholder="you@example.com"
+            />
+          </label>
+          <button id="authRequestBtn" class="btn btn-solid" type="submit">Send Magic Link</button>
+        </form>
+        <p id="authHint" class="muted">We'll send a sign-in link that expires in 15 minutes.</p>
+        <p id="authMessage" class="muted"></p>
+      </article>
+    </section>
     <header class="topbar minimal-topbar">
       <button id="openSettingsBtn" class="icon-btn topbar-icon" type="button" aria-label="Open settings">⚙</button>
       <label class="topbar-month">
@@ -579,7 +602,7 @@
           <button class="btn btn-ghost" type="button" data-close-sheet="settingsSheet">Close</button>
         </div>
         <form id="quickSettingsForm" class="sheet-form">
-          <label>
+          <label id="quickSettingsUserRow" class="hidden">
             <span id="quickSettingsUserLabel">User ID</span>
             <input name="user_id" type="number" min="1" value="1" />
           </label>
@@ -629,6 +652,7 @@
             </label>
           </div>
           <button class="btn btn-solid" id="quickSettingsSaveBtn" type="submit">Save Settings</button>
+          <button class="btn btn-ghost" id="quickLogoutBtn" type="button">Logout</button>
         </form>
         <section id="debugPanel" class="debug-panel hidden">
           <div class="section-head">
