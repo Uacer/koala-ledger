@@ -20,11 +20,7 @@ const state = {
     authenticated: false,
     user: null,
     allowDevBypass: false,
-    devBypass: false,
-    pendingEmail: "",
-    step: "email_step",
-    submitting: false,
-    resendCooldownSec: 0
+    devBypass: false
   },
   latestExtractionId: null,
   latestExtractionDraft: null,
@@ -126,7 +122,7 @@ const I18N = {
     riskMetrics: "⚠️ Risk Metrics",
     budgetStatus: "Budget Status (L1 only)",
     netWorthComposition: "🧩 Net Worth Composition",
-    plannedBudget: "Planned Budget",
+    plannedBudget: "📋 Planned Budget",
     recentExpenses: "Transactions",
     viewAllExpenses: "View All",
     budgetPlanSummary: "Planned {planned} · Spent {spent} · Remaining {remaining}",
@@ -142,22 +138,11 @@ const I18N = {
     addIncome: "💰 Add Income",
     addTransfer: "🔁 Add Transfer",
     authTitle: "Nomad Finance OS",
-    authSubtitle: "Sign in with your email verification code.",
+    authSubtitle: "Sign in with your email magic link.",
     authEmailLabel: "Email",
-    authContinueBtn: "Continue",
-    authCodeLabel: "Verification Code",
-    authHint: "We'll send a 6-digit code that expires in 10 minutes.",
-    authSent: "Verification code sent. Check your inbox.",
-    authResendSent: "Verification code resent.",
-    authCodeSentTo: "Code sent to {email}. Enter it below.",
-    authResendIn: "{seconds}s before you can resend code.",
-    authResendBtn: "Resend verification code",
-    authSignedIn: "Signed in successfully.",
-    authCodeInvalid: "Verification code is invalid or expired.",
-    authTooMany: "Too many attempts. Please try again later.",
-    authEmailFailed: "Email delivery failed. Please try again.",
-    authRequestFailed: "Failed to request verification code.",
-    authVerifyFailed: "Verification failed. Please try again.",
+    authSendBtn: "Send Magic Link",
+    authHint: "We'll send a sign-in link that expires in 15 minutes.",
+    authSent: "Magic link sent. Check your inbox.",
     authSessionExpired: "Session expired. Please sign in again.",
     close: "Close",
     date: "Date",
@@ -358,7 +343,7 @@ const I18N = {
     riskMetrics: "⚠️ 风险指标",
     budgetStatus: "预算进度（仅一级分类）",
     netWorthComposition: "🧩 净资产结构",
-    plannedBudget: "预算计划",
+    plannedBudget: "📋 预算计划",
     recentExpenses: "交易记录",
     viewAllExpenses: "查看全部",
     budgetPlanSummary: "计划 {planned} · 已花 {spent} · 剩余 {remaining}",
@@ -374,22 +359,11 @@ const I18N = {
     addIncome: "💰 新增收入",
     addTransfer: "🔁 新增转账",
     authTitle: "Nomad Finance OS",
-    authSubtitle: "使用邮箱验证码登录。",
+    authSubtitle: "使用邮箱 Magic Link 登录。",
     authEmailLabel: "邮箱",
-    authContinueBtn: "继续",
-    authCodeLabel: "验证码",
-    authHint: "我们会发送一个 10 分钟内有效的 6 位验证码。",
-    authSent: "验证码已发送，请检查邮箱。",
-    authResendSent: "验证码已重新发送。",
-    authCodeSentTo: "验证码已发送到 {email}，请输入验证码。",
-    authResendIn: "{seconds}s 后可重新发送验证码。",
-    authResendBtn: "重新发送验证码",
-    authSignedIn: "登录成功。",
-    authCodeInvalid: "验证码无效或已过期。",
-    authTooMany: "操作过于频繁，请稍后再试。",
-    authEmailFailed: "邮件发送失败，请稍后重试。",
-    authRequestFailed: "验证码发送失败，请重试。",
-    authVerifyFailed: "验证码校验失败，请重试。",
+    authSendBtn: "发送登录链接",
+    authHint: "我们会发送一个 15 分钟内有效的登录链接。",
+    authSent: "登录链接已发送，请检查邮箱。",
     authSessionExpired: "登录已过期，请重新登录。",
     close: "关闭",
     date: "日期",
@@ -581,13 +555,11 @@ const I18N = {
 };
 
 const FX_QUOTE_CACHE = new Map();
-const AUTH_RESEND_COOLDOWN_SECONDS = 60;
 const MONEY_FORMATTER = new Intl.NumberFormat(undefined, {
   minimumFractionDigits: 2,
   maximumFractionDigits: 2
 });
 let quickEntryLimitReqSeq = 0;
-let authResendTimer = null;
 
 const $ = (selector) => document.querySelector(selector);
 
@@ -606,15 +578,9 @@ function bindUI() {
     syncControlState();
     await loadAll();
   });
-  const authGateForm = $("#authGateForm");
-  if (authGateForm) {
-    authGateForm.addEventListener("submit", submitAuthGateForm);
-  }
-  const authResendBtn = $("#authResendBtn");
-  if (authResendBtn) {
-    authResendBtn.addEventListener("click", () => {
-      void resendAuthCode();
-    });
+  const magicLinkForm = $("#magicLinkRequestForm");
+  if (magicLinkForm) {
+    magicLinkForm.addEventListener("submit", submitMagicLinkRequestForm);
   }
   const quickLogoutBtn = $("#quickLogoutBtn");
   if (quickLogoutBtn) {
@@ -1596,7 +1562,6 @@ function showAuthGate() {
     gate.setAttribute("aria-hidden", "false");
   }
   document.body.classList.add("auth-required");
-  renderAuthGate();
   syncDevBypassVisibility();
 }
 
@@ -1607,109 +1572,8 @@ function hideAuthGate() {
     gate.setAttribute("aria-hidden", "true");
   }
   document.body.classList.remove("auth-required");
-  resetAuthFormState();
-}
-
-function setAuthMessage(message, options = {}) {
-  const node = $("#authMessage");
-  if (!node) return;
-  node.textContent = String(message || "");
-  node.classList.toggle("auth-message-error", Boolean(options.error && message));
-}
-
-function renderAuthGate() {
-  const isCodeStep = state.auth.step === "code_step";
-  const emailInput = $("#authEmailInput");
-  const codeField = $("#authCodeField");
-  const codeInput = $("#authCodeInput");
-  const continueBtn = $("#authContinueBtn");
-  const resendLine = $("#authResendLine");
-  const resendText = $("#authResendText");
-  const resendBtn = $("#authResendBtn");
-
-  if (codeField) codeField.classList.toggle("hidden", !isCodeStep);
-
-  if (emailInput instanceof HTMLInputElement) {
-    if (isCodeStep && state.auth.pendingEmail) {
-      emailInput.value = String(state.auth.pendingEmail);
-    }
-    emailInput.readOnly = isCodeStep;
-  }
-
-  if (codeInput instanceof HTMLInputElement) {
-    codeInput.required = isCodeStep;
-  }
-
-  if (continueBtn instanceof HTMLButtonElement) {
-    continueBtn.textContent = t("authContinueBtn");
-    continueBtn.disabled = Boolean(state.auth.submitting);
-  }
-
-  if (resendLine) resendLine.classList.toggle("hidden", !isCodeStep);
-  if (isCodeStep) {
-    const cooldownSec = Math.max(0, Number(state.auth.resendCooldownSec || 0));
-    if (cooldownSec > 0) {
-      if (resendText) resendText.textContent = t("authResendIn", { seconds: String(cooldownSec) });
-      if (resendBtn instanceof HTMLButtonElement) {
-        resendBtn.classList.add("hidden");
-        resendBtn.disabled = true;
-      }
-    } else {
-      if (resendText) resendText.textContent = "";
-      if (resendBtn instanceof HTMLButtonElement) {
-        resendBtn.classList.remove("hidden");
-        resendBtn.disabled = Boolean(state.auth.submitting);
-      }
-    }
-  } else {
-    if (resendText) resendText.textContent = "";
-    if (resendBtn instanceof HTMLButtonElement) {
-      resendBtn.classList.add("hidden");
-      resendBtn.disabled = true;
-    }
-  }
-}
-
-function stopAuthResendCooldown(resetState = false) {
-  if (authResendTimer) {
-    clearInterval(authResendTimer);
-    authResendTimer = null;
-  }
-  if (resetState) {
-    state.auth.resendCooldownSec = 0;
-  }
-}
-
-function startAuthResendCooldown(seconds = AUTH_RESEND_COOLDOWN_SECONDS) {
-  stopAuthResendCooldown(false);
-  state.auth.resendCooldownSec = Math.max(0, Math.floor(Number(seconds) || 0));
-  renderAuthGate();
-  if (state.auth.resendCooldownSec <= 0) return;
-  authResendTimer = setInterval(() => {
-    state.auth.resendCooldownSec = Math.max(0, Number(state.auth.resendCooldownSec || 0) - 1);
-    if (state.auth.resendCooldownSec <= 0) {
-      stopAuthResendCooldown(false);
-    }
-    renderAuthGate();
-  }, 1000);
-}
-
-function resetAuthFormState() {
-  stopAuthResendCooldown(true);
-  state.auth.pendingEmail = "";
-  state.auth.step = "email_step";
-  state.auth.submitting = false;
-  const emailInput = $("#authEmailInput");
-  if (emailInput instanceof HTMLInputElement) {
-    emailInput.value = "";
-    emailInput.readOnly = false;
-  }
-  const codeInput = $("#authCodeInput");
-  if (codeInput instanceof HTMLInputElement) {
-    codeInput.value = "";
-  }
-  setAuthMessage("");
-  renderAuthGate();
+  const authMessage = $("#authMessage");
+  if (authMessage) authMessage.textContent = "";
 }
 
 function syncDevBypassVisibility() {
@@ -1723,121 +1587,39 @@ function syncDevBypassVisibility() {
   }
 }
 
-function buildAuthRequestError(response, payload) {
-  const detail =
-    typeof payload?.error === "string"
-      ? payload.error
-      : payload?.error
-        ? JSON.stringify(payload.error)
-        : `${response.status} ${response.statusText}`;
-  const error = new Error(detail);
-  error.status = response.status;
-  return error;
-}
-
-function resolveAuthErrorMessage(error, phase) {
-  const status = Number(error?.status || 0);
-  if (status === 429) return t("authTooMany");
-  if (status === 502) return t("authEmailFailed");
-  if (phase === "verify" && status === 400) return t("authCodeInvalid");
-  if (phase === "request") return t("authRequestFailed");
-  if (phase === "verify") return t("authVerifyFailed");
-  return String(error?.message || t("authVerifyFailed"));
-}
-
-async function requestAuthCode(email, options = {}) {
-  const asResend = Boolean(options.asResend);
-  const response = await fetch("/api/v1/auth/code/request", {
-    method: "POST",
-    credentials: "same-origin",
-    headers: { "content-type": "application/json" },
-    body: JSON.stringify({ email })
-  });
-  const payload = await safeJson(response);
-  if (!response.ok) {
-    throw buildAuthRequestError(response, payload);
-  }
-  state.auth.pendingEmail = String(email || "").trim();
-  state.auth.step = "code_step";
-  startAuthResendCooldown();
-  setAuthMessage(t("authCodeSentTo", { email: state.auth.pendingEmail }));
-  renderAuthGate();
-  const codeInput = $("#authCodeInput");
-  if (codeInput instanceof HTMLInputElement) codeInput.focus();
-  showToast(asResend ? t("authResendSent") : t("authSent"));
-}
-
-async function submitAuthGateForm(event) {
+async function submitMagicLinkRequestForm(event) {
   event.preventDefault();
   const form = event.currentTarget;
   if (!(form instanceof HTMLFormElement)) return;
-  if (state.auth.submitting) return;
+  const button = $("#authRequestBtn");
+  const authMessage = $("#authMessage");
   const fd = new FormData(form);
   const email = String(fd.get("email") || "").trim();
-  const isCodeStep = state.auth.step === "code_step";
-  const code = String(fd.get("code") || "")
-    .trim()
-    .replace(/\s+/g, "");
-
   if (!email) return;
-  if (isCodeStep && !code) return;
-
-  state.auth.submitting = true;
-  setAuthMessage("");
-  renderAuthGate();
+  if (button instanceof HTMLButtonElement) button.disabled = true;
   try {
-    if (!isCodeStep) {
-      await requestAuthCode(email, { asResend: false });
-      return;
-    }
-
-    const verifyRes = await fetch("/api/v1/auth/code/verify", {
+    const response = await fetch("/api/v1/auth/magic-link/request", {
       method: "POST",
       credentials: "same-origin",
       headers: { "content-type": "application/json" },
-      body: JSON.stringify({ email: state.auth.pendingEmail || email, code })
+      body: JSON.stringify({ email })
     });
-    const verifyPayload = await safeJson(verifyRes);
-    if (!verifyRes.ok) {
-      throw buildAuthRequestError(verifyRes, verifyPayload);
+    const payload = await safeJson(response);
+    if (!response.ok) {
+      const detail =
+        typeof payload?.error === "string"
+          ? payload.error
+          : payload?.error
+            ? JSON.stringify(payload.error)
+            : `${response.status} ${response.statusText}`;
+      throw new Error(detail);
     }
-    setAuthMessage("");
-    await loadAuthSession();
-    if (!state.auth.authenticated) {
-      throw new Error(t("authVerifyFailed"));
-    }
-    hideAuthGate();
-    showToast(t("authSignedIn"));
-    await loadAll();
+    if (authMessage) authMessage.textContent = t("authSent");
+    showToast(t("authSent"));
   } catch (error) {
-    const message = resolveAuthErrorMessage(error, isCodeStep ? "verify" : "request");
-    setAuthMessage(message, { error: true });
-    showToast(message, true);
+    showToast(String(error?.message || "Failed to request magic link."), true);
   } finally {
-    state.auth.submitting = false;
-    renderAuthGate();
-  }
-}
-
-async function resendAuthCode() {
-  if (state.auth.step !== "code_step") return;
-  if (state.auth.submitting) return;
-  if (Number(state.auth.resendCooldownSec || 0) > 0) return;
-  const email = String(state.auth.pendingEmail || "").trim();
-  if (!email) return;
-
-  state.auth.submitting = true;
-  setAuthMessage("");
-  renderAuthGate();
-  try {
-    await requestAuthCode(email, { asResend: true });
-  } catch (error) {
-    const message = resolveAuthErrorMessage(error, "request");
-    setAuthMessage(message, { error: true });
-    showToast(message, true);
-  } finally {
-    state.auth.submitting = false;
-    renderAuthGate();
+    if (button instanceof HTMLButtonElement) button.disabled = false;
   }
 }
 
@@ -1853,14 +1635,9 @@ async function logoutCurrentSession() {
   state.auth.authenticated = false;
   state.auth.user = null;
   state.auth.devBypass = false;
-  state.auth.pendingEmail = "";
-  state.auth.step = "email_step";
-  state.auth.submitting = false;
-  stopAuthResendCooldown(true);
   closeSheet("settingsSheet");
   closeAllSheets();
   closeUtilityPanel();
-  setAuthMessage("");
   showAuthGate();
 }
 
@@ -3512,9 +3289,7 @@ function renderPlannedBudgetCard(dashboard) {
   if (!summary || !list || !pieView || !toggleBtn) return;
 
   const showPie = Boolean(state.ui.budgetPieView);
-  toggleBtn.innerHTML = showPie
-    ? `<svg width="15" height="15" viewBox="0 0 15 15" fill="none" aria-hidden="true"><rect x="2" y="3.5" width="11" height="1.6" rx="0.8" fill="currentColor"/><rect x="2" y="6.7" width="11" height="1.6" rx="0.8" fill="currentColor"/><rect x="2" y="9.9" width="11" height="1.6" rx="0.8" fill="currentColor"/></svg>`
-    : `<svg width="15" height="15" viewBox="0 0 15 15" fill="none" aria-hidden="true"><path d="M7.5 1.5v6h6a6 6 0 1 1-6-6Z" fill="currentColor" opacity="0.45"/><path d="M7.5 1.5a6 6 0 0 1 6 6h-6V1.5Z" fill="currentColor"/></svg>`;
+  toggleBtn.textContent = showPie ? "≣" : "◔";
   const toggleLabel = showPie ? t("budgetViewToggleToList") : t("budgetViewToggleToPie");
   toggleBtn.setAttribute("aria-label", toggleLabel);
   toggleBtn.setAttribute("title", toggleLabel);
@@ -3646,26 +3421,29 @@ function renderBudgetPieView(monthlyRows, yearlyRows, baseCurrency) {
 function renderAccounts() {
   const target = $("#accountList");
   if (!state.accounts.length) {
-    target.innerHTML = '<div class="list-row muted">No accounts yet.</div>';
+    target.innerHTML = '<div class="list-row muted" style="padding:16px;text-align:center">No accounts yet. Create one above.</div>';
     return;
   }
+  const typeIcon = { bank:"🏦", cash:"💵", wise:"💸", crypto_wallet:"₿", exchange:"📈", alipay:"🅰", wechat:"💬", restricted_cash:"🔒" };
+  const typeLabel = { bank:"Bank", cash:"Cash", wise:"Wise", crypto_wallet:"Crypto", exchange:"Exchange", alipay:"Alipay", wechat:"WeChat", restricted_cash:"Restricted" };
   target.innerHTML = state.accounts
-    .map(
-      (row) => `
-      <article class="list-row">
-        <div class="row-main">
-          <strong>${escapeHtml(row.name)}</strong>
-          <span class="mono">${formatMoney(row.balance)} ${row.currency}</span>
+    .map((row) => {
+      const icon = typeIcon[row.type] || "💼";
+      const label = typeLabel[row.type] || row.type;
+      const bal = formatMoney(row.balance);
+      const isNeg = Number(row.balance) < 0;
+      return `
+      <article class="list-row clickable account-list-row" data-action="edit-account" data-id="${row.id}">
+        <div class="account-row-inner">
+          <span class="account-type-icon">${icon}</span>
+          <div class="account-info">
+            <span class="account-name">${escapeHtml(row.name)}</span>
+            <span class="account-meta muted">${escapeHtml(label)} · ${escapeHtml(row.currency)}</span>
+          </div>
+          <span class="account-balance mono${isNeg ? " overspend" : ""}">${bal}</span>
         </div>
-        <div class="muted">type: ${row.type}</div>
-        <div class="row-main">
-          <span class="muted mono">id: ${row.id}</span>
-          <button class="btn btn-ghost" type="button" data-action="edit-account" data-id="${row.id}">${escapeHtml(
-            t("edit")
-          )}</button>
-        </div>
-      </article>`
-    )
+      </article>`;
+    })
     .join("");
 }
 
@@ -4116,42 +3894,31 @@ function renderTodayExpensesCard(rows) {
   if (!listEl || !totalEl) return;
   const today = new Date().toISOString().slice(0, 10);
   const base = state.settings?.base_currency || 'USD';
-  // All today's transactions (not just expenses)
-  const todayRows = (Array.isArray(rows) ? rows : []).filter((r) => r.tx_date === today);
-  // Total = sum of expense amounts (absolute)
-  const total = todayRows.reduce((s, r) => s + (r.type === 'expense' ? (Number(r.amount_base) || 0) : 0), 0);
+  const todayRows = (Array.isArray(rows) ? rows : []).filter(
+    (r) => r.tx_date === today && r.type === 'expense'
+  );
+  const total = todayRows.reduce((s, r) => s + (Number(r.amount_base) || 0), 0);
   totalEl.innerHTML = todayRows.length
     ? `${escapeHtml(formatMoney(total))}<span class="today-total-unit">${escapeHtml(base)}</span>`
     : '';
   if (!todayRows.length) {
-    listEl.innerHTML = '<div class="incard-empty muted">No transactions today</div>';
+    listEl.innerHTML = '<div class="compact-row muted">No expenses today</div>';
     return;
   }
   listEl.innerHTML = todayRows.map((row) => {
-    // Title: L2 only for expense, type label for income/transfer
-    let title = '';
-    if (row.type === 'expense') {
-      title = row.category_l2 ? withL2Emoji(row.category_l2, row.category_l1) : (row.category_l1 ? withL1Emoji(row.category_l1) : txTypeLabel('expense'));
-    } else if (row.type === 'income') {
-      title = txTypeLabel('income');
-    } else {
-      const reason = row.transfer_reason && row.transfer_reason !== 'normal' ? ` · ${getTransferReasonLabel(row.transfer_reason)}` : '';
-      title = txTypeLabel('transfer') + reason;
-    }
+    const title = formatRecentTransactionTitle(row);
     const showOrig = row.currency_original && row.currency_original.toUpperCase() !== base.toUpperCase();
-    // Absolute amounts — color conveys direction, no minus sign needed
-    const baseAmt = Math.abs(Number(row.amount_base));
-    const origAmt = Math.abs(Number(row.amount_original));
-    const amtClass = row.type === 'income' ? 'tx-amount income' : row.type === 'transfer' ? 'tx-amount transfer' : 'tx-amount expense';
+    const signedBase = -Math.abs(Number(row.amount_base));
+    const signedOrig = -Math.abs(Number(row.amount_original));
     return `
       <article class="incard-row clickable" data-tx-id="${row.id}">
         <div class="tx-row-main">
           <span class="tx-row-title">${escapeHtml(title)}</span>
-          <span class="${amtClass}">${escapeHtml(formatMoney(baseAmt))}<span class="tx-unit">${escapeHtml(base)}</span></span>
+          <span class="tx-amount expense">${escapeHtml(formatMoney(signedBase))}<span class="tx-unit">${escapeHtml(base)}</span></span>
         </div>
         <div class="tx-row-sub">
-          <span class="tx-row-meta">${escapeHtml(row.tx_date)}</span>
-          ${showOrig ? `<span class="tx-orig">${escapeHtml(formatMoney(origAmt))} ${escapeHtml(row.currency_original)}</span>` : ''}
+          <span class="tx-row-meta">${row.account_from_id ? escapeHtml(row.account_from_id) + ' · ' : ''}${escapeHtml(row.tx_date)}</span>
+          ${showOrig ? `<span class="tx-orig">${escapeHtml(formatMoney(signedOrig))} ${escapeHtml(row.currency_original)}</span>` : ''}
         </div>
         ${row.note ? `<div class="tx-note">${escapeHtml(row.note)}</div>` : ''}
       </article>`;
@@ -4477,11 +4244,8 @@ function applyI18n() {
   setText("authTitle", t("authTitle"));
   setText("authSubtitle", t("authSubtitle"));
   setText("authEmailLabel", t("authEmailLabel"));
-  setText("authContinueBtn", t("authContinueBtn"));
-  setText("authCodeLabel", t("authCodeLabel"));
-  setText("authResendBtn", t("authResendBtn"));
+  setText("authRequestBtn", t("authSendBtn"));
   setText("authHint", t("authHint"));
-  renderAuthGate();
   setText("subtitleText", t("subtitle"));
   setText("monthLabelText", t("month"));
   setText("dashboardTitle", t("dashboard"));
@@ -4804,26 +4568,26 @@ function txTypeLabel(type) {
 }
 
 // ── Dashboard drag-to-reorder ──────────────────────────────────────────────
+
 const DASH_ORDER_KEY = "nomad-dash-order";
 
 function applyDashboardOrder() {
   const container = document.getElementById("dashboardSortable");
   if (!container) return;
   let order;
-  try { order = JSON.parse(localStorage.getItem(DASH_ORDER_KEY) || "[]"); } catch { order = []; }
+  try { order = JSON.parse(localStorage.getItem(DASH_ORDER_KEY) || "null"); } catch { order = null; }
   if (!Array.isArray(order) || !order.length) return;
+  const map = {};
+  for (const el of container.querySelectorAll("[data-sort-id]")) map[el.dataset.sortId] = el;
   for (const id of order) {
-    const el = container.querySelector(`[data-sort-id="${id}"]`);
-    if (el) container.appendChild(el);
+    if (map[id]) container.appendChild(map[id]);
   }
 }
 
 function saveDashboardOrder() {
   const container = document.getElementById("dashboardSortable");
   if (!container) return;
-  const ids = [...container.children]
-    .filter(c => !c.classList.contains("drag-placeholder"))
-    .map(c => c.dataset.sortId).filter(Boolean);
+  const ids = [...container.querySelectorAll("[data-sort-id]")].map(el => el.dataset.sortId);
   try { localStorage.setItem(DASH_ORDER_KEY, JSON.stringify(ids)); } catch {}
 }
 
@@ -4832,19 +4596,16 @@ function initDashboardDrag() {
   if (!container) return;
   applyDashboardOrder();
 
-  // State
-  let dragEl = null;         // the card being dragged
-  let placeholder = null;   // ghost element holding the card's space
+  let dragEl = null;
+  let placeholder = null;
   let longPressTimer = null;
-  let pressTimer = null;    // 80ms visual "lift" feedback timer
-  let pressEl = null;       // card being held before drag confirms
-  let dragOffsetY = 0;       // finger Y relative to card top
+  let pressTimer = null;
+  let pressEl = null;
+  let dragOffsetY = 0;
   let active = false;
-  let currentTouchY = 0;   // live finger Y (updated even before drag starts)
+  let currentTouchY = 0;
 
-  // ── Helpers ──
   function snapshots() {
-    // Capture {el, midY} for all non-drag, non-placeholder children (live rects)
     return [...container.children]
       .filter(c => c !== dragEl && !c.classList.contains("drag-placeholder"))
       .map(c => ({ el: c, midY: c.getBoundingClientRect().top + c.getBoundingClientRect().height / 2 }));
@@ -4858,7 +4619,6 @@ function initDashboardDrag() {
     }
     if (insertBefore) container.insertBefore(placeholder, insertBefore);
     else container.appendChild(placeholder);
-    // Keep dragEl floating via transform
     const contRect = container.getBoundingClientRect();
     dragEl.style.transform = `translateY(${clientY - contRect.top - dragOffsetY}px)`;
   }
@@ -4866,17 +4626,13 @@ function initDashboardDrag() {
   function startDrag(card, clientY) {
     active = true;
     dragEl = card;
-    // Lock selection globally so no text gets highlighted during drag
     document.body.style.webkitUserSelect = "none";
     document.body.style.userSelect = "none";
     const rect = card.getBoundingClientRect();
     dragOffsetY = clientY - rect.top;
-
-    // Create placeholder matching card height
     placeholder = document.createElement("div");
     placeholder.className = "drag-placeholder";
     placeholder.style.height = rect.height + "px";
-    // Insert placeholder in card's current position, then pull card out of flow
     container.insertBefore(placeholder, card);
     card.style.position = "absolute";
     card.style.top = "0";
@@ -4905,11 +4661,9 @@ function initDashboardDrag() {
     if (!active) return;
     active = false;
     unlockSelection();
-    // Place real card where placeholder is
     container.insertBefore(dragEl, placeholder);
     placeholder.remove();
     placeholder = null;
-    // Reset styles
     dragEl.style.cssText = "";
     dragEl.classList.remove("is-dragging");
     container.style.position = "";
@@ -4933,7 +4687,7 @@ function initDashboardDrag() {
     container.classList.remove("sort-active");
   }
 
-  // ── Touch events ──
+  // ── Touch ──
   container.addEventListener("touchstart", (e) => {
     const card = e.target.closest("[data-sort-id]");
     if (!card) return;
@@ -4941,11 +4695,7 @@ function initDashboardDrag() {
     document.body.style.userSelect = "none";
     pressEl = card;
     currentTouchY = e.touches[0].clientY;
-
-    // 80ms: show subtle "lift" so user knows long-press is registered
     pressTimer = setTimeout(() => card.classList.add("press-ready"), 80);
-
-    // 500ms: activate drag using current (live) finger position
     longPressTimer = setTimeout(() => {
       clearPressState();
       startDrag(card, currentTouchY);
@@ -4955,7 +4705,6 @@ function initDashboardDrag() {
   window.addEventListener("touchmove", (e) => {
     currentTouchY = e.touches[0].clientY;
     if (longPressTimer) {
-      // Finger moved — cancel long press and restore
       clearTimeout(longPressTimer); longPressTimer = null;
       clearPressState();
       unlockSelection();
@@ -4978,12 +4727,10 @@ function initDashboardDrag() {
     cancelDrag();
   });
 
-  // ── Mouse events (desktop long-press via mousedown hold) ──
+  // ── Mouse (desktop) ──
   container.addEventListener("mousedown", (e) => {
     const card = e.target.closest("[data-sort-id]");
-    if (!card) return;
-    // Ignore clicks on interactive children
-    if (e.target.closest("button,input,select,a,textarea")) return;
+    if (!card || e.target.closest("button,input,select,a,textarea")) return;
     const clientY = e.clientY;
     longPressTimer = setTimeout(() => {
       e.preventDefault();
