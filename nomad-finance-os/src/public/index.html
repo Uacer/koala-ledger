@@ -199,84 +199,96 @@
 
       <section id="transactionsPanel" class="panel">
         <h2>Transactions</h2>
-        <form id="transactionForm" class="card form-grid">
-          <label>
-            Date
-            <input name="date" type="date" required />
-          </label>
-          <label>
-            Type
-            <select name="type" required>
-              <option value="expense">expense</option>
-              <option value="income">income</option>
-              <option value="transfer">transfer</option>
-            </select>
-          </label>
-          <label>
-            Amount
-            <input name="amount_original" type="number" step="0.00000001" required />
-          </label>
-          <label>
-            Currency
-            <select name="currency_original" required>
-              <option value="CNY">人民币 (CNY)</option>
-              <option value="EUR">欧元 (EUR)</option>
-              <option value="THB">泰铢 (THB)</option>
-              <option value="USD" selected>美元 (USD)</option>
-              <option value="JPY">日元 (JPY)</option>
-              <option value="KRW">韩元 (KRW)</option>
-            </select>
-          </label>
-          <label>
-            FX Rate (optional)
-            <input name="fx_rate" type="number" step="0.00000001" placeholder="Auto if empty" />
-          </label>
-          <label>
-            Note
-            <input name="note" type="text" maxlength="500" placeholder="optional" />
-          </label>
-
-          <label class="field-expense">
-            Category L1
-            <select name="category_l1"></select>
-          </label>
-          <label class="field-expense">
-            Category L2
-            <select name="category_l2"></select>
-          </label>
-          <label class="field-transfer hidden">
-            Transfer Reason
-            <select name="transfer_reason">
-              <option value="normal">normal</option>
-              <option value="loan">loan</option>
-              <option value="borrow">borrow</option>
-              <option value="deposit_lock">deposit_lock</option>
-              <option value="deposit_release">deposit_release</option>
-            </select>
-          </label>
-          <label>
-            Account From
-            <select name="account_from_id"></select>
-          </label>
-          <label>
-            Account To
-            <select name="account_to_id"></select>
-          </label>
-          <label class="grid-span">
-            Tags (comma separated)
-            <input name="tags" type="text" placeholder="client-a, bangkok, reimbursable" />
-          </label>
-          <div class="actions grid-span">
-            <button class="btn btn-solid" type="submit">Create Transaction</button>
+        <form id="transactionForm" class="card tx-form">
+          <div class="tx-form-section">
+            <span class="tx-form-label">Basic</span>
+            <div class="form-grid">
+              <label class="form-field">
+                <span class="form-field-label">Date</span>
+                <input name="date" type="date" required />
+              </label>
+              <label class="form-field">
+                <span class="form-field-label">Type</span>
+                <select name="type" required>
+                  <option value="expense">Expense</option>
+                  <option value="income">Income</option>
+                  <option value="transfer">Transfer</option>
+                </select>
+              </label>
+              <label class="form-field">
+                <span class="form-field-label">Amount</span>
+                <input name="amount_original" type="number" step="0.00000001" required />
+              </label>
+              <label class="form-field">
+                <span class="form-field-label">Currency</span>
+                <select name="currency_original" required>
+                  <option value="CNY">CNY</option>
+                  <option value="EUR">EUR</option>
+                  <option value="THB">THB</option>
+                  <option value="USD" selected>USD</option>
+                  <option value="JPY">JPY</option>
+                  <option value="KRW">KRW</option>
+                </select>
+              </label>
+            </div>
           </div>
+          <div class="tx-form-section">
+            <span class="tx-form-label">Category &amp; Account</span>
+            <div class="form-grid">
+              <label class="form-field field-expense">
+                <span class="form-field-label">Category L1</span>
+                <select name="category_l1"></select>
+              </label>
+              <label class="form-field field-expense">
+                <span class="form-field-label">Category L2</span>
+                <select name="category_l2"></select>
+              </label>
+              <label class="form-field field-transfer hidden">
+                <span class="form-field-label">Reason</span>
+                <select name="transfer_reason">
+                  <option value="normal">Normal</option>
+                  <option value="loan">Loan</option>
+                  <option value="borrow">Borrow</option>
+                  <option value="deposit_lock">Deposit Lock</option>
+                  <option value="deposit_release">Deposit Release</option>
+                </select>
+              </label>
+              <label class="form-field">
+                <span class="form-field-label">From Account</span>
+                <select name="account_from_id"></select>
+              </label>
+              <label class="form-field">
+                <span class="form-field-label">To Account</span>
+                <select name="account_to_id"></select>
+              </label>
+            </div>
+          </div>
+          <div class="tx-form-section">
+            <span class="tx-form-label">Optional</span>
+            <div class="form-grid">
+              <label class="form-field">
+                <span class="form-field-label">FX Rate</span>
+                <input name="fx_rate" type="number" step="0.00000001" placeholder="Auto" />
+              </label>
+              <label class="form-field">
+                <span class="form-field-label">Note</span>
+                <input name="note" type="text" maxlength="500" placeholder="Add note…" />
+              </label>
+              <label class="form-field grid-span">
+                <span class="form-field-label">Tags</span>
+                <input name="tags" type="text" placeholder="client-a, bangkok, reimbursable" />
+              </label>
+            </div>
+          </div>
+          <button class="btn btn-solid" type="submit">Add Transaction</button>
         </form>
 
-        <div class="card filter-row" id="transactionFilterCard">
-          <label>
-            Filter Tag
-            <input id="transactionTagFilter" type="text" placeholder="food" />
-          </label>
-          <button id="applyTxFilterBtn" class="btn">Apply</button>
+        <div class="card tx-filter-card" id="transactionFilterCard">
+          <div class="tx-filter-inner">
+            <svg class="tx-filter-icon" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+            <input id="transactionTagFilter" type="text" placeholder="Filter by tag…" />
+            <button id="applyTxFilterBtn" class="btn">Go</button>
+          </div>
         </div>
         <div id="transactionList" class="list-block"></div>
       </section>

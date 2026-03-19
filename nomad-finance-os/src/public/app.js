@@ -3835,39 +3835,50 @@ function renderTransactionList(rows, options = {}) {
   target.innerHTML = visibleRows
     .map((row) => {
       const sourceCurrency = String(row.currency_original || baseCurrency).toUpperCase();
-      const effectiveRate =
-        Number(row.effective_fx_rate || row.fx_rate || 1) > 0
-          ? Number(row.effective_fx_rate || row.fx_rate || 1)
-          : 1;
-      const fxLine =
-        sourceCurrency !== baseCurrency
-          ? `<div class="muted mono">FX: ${escapeHtml(sourceCurrency)} → ${escapeHtml(
-              baseCurrency
-            )} = ${effectiveRate.toFixed(6)}</div>`
-          : "";
-      const tags =
-        row.tags && row.tags.length
-          ? `<div class="tag-wrap">${row.tags
-              .map((tag) => `<span class="pill">${escapeHtml(tag)}</span>`)
-              .join("")}</div>`
-          : "";
+      const showOrig = sourceCurrency !== baseCurrency;
+      const isExpense = row.type === "expense";
+      const isIncome = row.type === "income";
+      const isTransfer = row.type === "transfer";
+
+      // title line
+      let title = "";
+      if (isExpense) title = formatCategoryPair(row.category_l1, row.category_l2) || txTypeLabel(row.type);
+      else if (isIncome) title = `${txTypeLabel("income")}`;
+      else {
+        const reason = row.transfer_reason && row.transfer_reason !== "normal"
+          ? ` · ${getTransferReasonLabel(row.transfer_reason)}` : "";
+        title = `${txTypeLabel("transfer")}${reason}`;
+      }
+
+      // account line
+      let accountLine = "";
+      if (isExpense && row.account_from_id) accountLine = escapeHtml(row.account_from_id);
+      else if (isIncome && row.account_to_id) accountLine = escapeHtml(row.account_to_id);
+      else if (isTransfer) {
+        const from = row.account_from_id || "–";
+        const to = row.account_to_id || "–";
+        accountLine = `${escapeHtml(from)} → ${escapeHtml(to)}`;
+      }
+
+      const amountClass = isExpense ? "tx-amount expense" : isIncome ? "tx-amount income" : "tx-amount transfer";
+      const signedBase = isExpense ? -Math.abs(Number(row.amount_base)) : isIncome ? Math.abs(Number(row.amount_base)) : Number(row.amount_base);
+      const signedOrig = isExpense ? -Math.abs(Number(row.amount_original)) : isIncome ? Math.abs(Number(row.amount_original)) : Number(row.amount_original);
+
+      const tags = row.tags && row.tags.length
+        ? `<div class="tx-tags">${row.tags.map((tag) => `<span class="pill">${escapeHtml(tag)}</span>`).join("")}</div>`
+        : "";
+
       return `
-        <article class="list-row clickable" data-tx-id="${row.id}">
-          <div class="row-main">
-            <strong>${txTypeLabel(row.type)} · ${formatMoney(row.amount_base)} ${
-        baseCurrency
-      }</strong>
-            <span class="muted">${row.tx_date}</span>
+        <article class="list-row tx-row clickable" data-tx-id="${row.id}">
+          <div class="tx-row-main">
+            <span class="tx-row-title">${escapeHtml(title)}</span>
+            <span class="${amountClass}">${escapeHtml(formatMoney(signedBase))}<span class="tx-unit">${escapeHtml(baseCurrency)}</span></span>
           </div>
-          <div class="muted">${escapeHtml(t("original"))}: ${formatMoney(row.amount_original)} ${escapeHtml(
-        row.currency_original
-      )}</div>
-          ${fxLine}
-          <div class="muted">${formatCategoryPair(row.category_l1, row.category_l2)} · ${escapeHtml(
-            t("reason")
-          )}: ${escapeHtml(getTransferReasonLabel(row.transfer_reason || "normal"))}</div>
-          <div class="muted mono">${escapeHtml(t("from"))}: ${row.account_from_id || "-"} · ${escapeHtml(t("to"))}: ${row.account_to_id || "-"}</div>
-          <div>${escapeHtml(row.note || "")}</div>
+          <div class="tx-row-sub">
+            <span class="tx-row-meta">${accountLine ? `${accountLine} · ` : ""}${escapeHtml(row.tx_date)}</span>
+            ${showOrig ? `<span class="tx-orig">${escapeHtml(formatMoney(signedOrig))} ${escapeHtml(sourceCurrency)}</span>` : ""}
+          </div>
+          ${row.note ? `<div class="tx-note">${escapeHtml(row.note)}</div>` : ""}
           ${tags}
         </article>`;
     })
