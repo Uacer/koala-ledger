@@ -21,7 +21,10 @@ const state = {
     user: null,
     allowDevBypass: false,
     devBypass: false,
-    pendingEmail: ""
+    pendingEmail: "",
+    step: "email_step",
+    submitting: false,
+    resendCooldownSec: 0
   },
   latestExtractionId: null,
   latestExtractionDraft: null,
@@ -123,7 +126,7 @@ const I18N = {
     riskMetrics: "⚠️ Risk Metrics",
     budgetStatus: "Budget Status (L1 only)",
     netWorthComposition: "🧩 Net Worth Composition",
-    plannedBudget: "📋 Planned Budget",
+    plannedBudget: "Planned Budget",
     recentExpenses: "Transactions",
     viewAllExpenses: "View All",
     budgetPlanSummary: "Planned {planned} · Spent {spent} · Remaining {remaining}",
@@ -141,13 +144,20 @@ const I18N = {
     authTitle: "Nomad Finance OS",
     authSubtitle: "Sign in with your email verification code.",
     authEmailLabel: "Email",
-    authSendBtn: "Send Code",
+    authContinueBtn: "Continue",
     authCodeLabel: "Verification Code",
-    authVerifyBtn: "Verify and Sign In",
     authHint: "We'll send a 6-digit code that expires in 10 minutes.",
     authSent: "Verification code sent. Check your inbox.",
+    authResendSent: "Verification code resent.",
     authCodeSentTo: "Code sent to {email}. Enter it below.",
+    authResendIn: "{seconds}s before you can resend code.",
+    authResendBtn: "Resend verification code",
     authSignedIn: "Signed in successfully.",
+    authCodeInvalid: "Verification code is invalid or expired.",
+    authTooMany: "Too many attempts. Please try again later.",
+    authEmailFailed: "Email delivery failed. Please try again.",
+    authRequestFailed: "Failed to request verification code.",
+    authVerifyFailed: "Verification failed. Please try again.",
     authSessionExpired: "Session expired. Please sign in again.",
     close: "Close",
     date: "Date",
@@ -348,7 +358,7 @@ const I18N = {
     riskMetrics: "⚠️ 风险指标",
     budgetStatus: "预算进度（仅一级分类）",
     netWorthComposition: "🧩 净资产结构",
-    plannedBudget: "📋 预算计划",
+    plannedBudget: "预算计划",
     recentExpenses: "交易记录",
     viewAllExpenses: "查看全部",
     budgetPlanSummary: "计划 {planned} · 已花 {spent} · 剩余 {remaining}",
@@ -366,13 +376,20 @@ const I18N = {
     authTitle: "Nomad Finance OS",
     authSubtitle: "使用邮箱验证码登录。",
     authEmailLabel: "邮箱",
-    authSendBtn: "发送验证码",
+    authContinueBtn: "继续",
     authCodeLabel: "验证码",
-    authVerifyBtn: "验证并登录",
     authHint: "我们会发送一个 10 分钟内有效的 6 位验证码。",
     authSent: "验证码已发送，请检查邮箱。",
+    authResendSent: "验证码已重新发送。",
     authCodeSentTo: "验证码已发送到 {email}，请输入验证码。",
+    authResendIn: "{seconds}s 后可重新发送验证码。",
+    authResendBtn: "重新发送验证码",
     authSignedIn: "登录成功。",
+    authCodeInvalid: "验证码无效或已过期。",
+    authTooMany: "操作过于频繁，请稍后再试。",
+    authEmailFailed: "邮件发送失败，请稍后重试。",
+    authRequestFailed: "验证码发送失败，请重试。",
+    authVerifyFailed: "验证码校验失败，请重试。",
     authSessionExpired: "登录已过期，请重新登录。",
     close: "关闭",
     date: "日期",
@@ -564,11 +581,13 @@ const I18N = {
 };
 
 const FX_QUOTE_CACHE = new Map();
+const AUTH_RESEND_COOLDOWN_SECONDS = 60;
 const MONEY_FORMATTER = new Intl.NumberFormat(undefined, {
   minimumFractionDigits: 2,
   maximumFractionDigits: 2
 });
 let quickEntryLimitReqSeq = 0;
+let authResendTimer = null;
 
 const $ = (selector) => document.querySelector(selector);
 
@@ -587,13 +606,15 @@ function bindUI() {
     syncControlState();
     await loadAll();
   });
-  const authCodeRequestForm = $("#authCodeRequestForm");
-  if (authCodeRequestForm) {
-    authCodeRequestForm.addEventListener("submit", submitAuthCodeRequestForm);
+  const authGateForm = $("#authGateForm");
+  if (authGateForm) {
+    authGateForm.addEventListener("submit", submitAuthGateForm);
   }
-  const authCodeVerifyForm = $("#authCodeVerifyForm");
-  if (authCodeVerifyForm) {
-    authCodeVerifyForm.addEventListener("submit", submitAuthCodeVerifyForm);
+  const authResendBtn = $("#authResendBtn");
+  if (authResendBtn) {
+    authResendBtn.addEventListener("click", () => {
+      void resendAuthCode();
+    });
   }
   const quickLogoutBtn = $("#quickLogoutBtn");
   if (quickLogoutBtn) {
@@ -1575,7 +1596,7 @@ function showAuthGate() {
     gate.setAttribute("aria-hidden", "false");
   }
   document.body.classList.add("auth-required");
-  setAuthCodeVerifyVisible(Boolean(state.auth.pendingEmail));
+  renderAuthGate();
   syncDevBypassVisibility();
 }
 
@@ -1586,23 +1607,109 @@ function hideAuthGate() {
     gate.setAttribute("aria-hidden", "true");
   }
   document.body.classList.remove("auth-required");
-  const authMessage = $("#authMessage");
-  if (authMessage) authMessage.textContent = "";
   resetAuthFormState();
 }
 
-function setAuthCodeVerifyVisible(visible) {
-  const verifyForm = $("#authCodeVerifyForm");
-  if (verifyForm) verifyForm.classList.toggle("hidden", !visible);
+function setAuthMessage(message, options = {}) {
+  const node = $("#authMessage");
+  if (!node) return;
+  node.textContent = String(message || "");
+  node.classList.toggle("auth-message-error", Boolean(options.error && message));
+}
+
+function renderAuthGate() {
+  const isCodeStep = state.auth.step === "code_step";
+  const emailInput = $("#authEmailInput");
+  const codeField = $("#authCodeField");
+  const codeInput = $("#authCodeInput");
+  const continueBtn = $("#authContinueBtn");
+  const resendLine = $("#authResendLine");
+  const resendText = $("#authResendText");
+  const resendBtn = $("#authResendBtn");
+
+  if (codeField) codeField.classList.toggle("hidden", !isCodeStep);
+
+  if (emailInput instanceof HTMLInputElement) {
+    if (isCodeStep && state.auth.pendingEmail) {
+      emailInput.value = String(state.auth.pendingEmail);
+    }
+    emailInput.readOnly = isCodeStep;
+  }
+
+  if (codeInput instanceof HTMLInputElement) {
+    codeInput.required = isCodeStep;
+  }
+
+  if (continueBtn instanceof HTMLButtonElement) {
+    continueBtn.textContent = t("authContinueBtn");
+    continueBtn.disabled = Boolean(state.auth.submitting);
+  }
+
+  if (resendLine) resendLine.classList.toggle("hidden", !isCodeStep);
+  if (isCodeStep) {
+    const cooldownSec = Math.max(0, Number(state.auth.resendCooldownSec || 0));
+    if (cooldownSec > 0) {
+      if (resendText) resendText.textContent = t("authResendIn", { seconds: String(cooldownSec) });
+      if (resendBtn instanceof HTMLButtonElement) {
+        resendBtn.classList.add("hidden");
+        resendBtn.disabled = true;
+      }
+    } else {
+      if (resendText) resendText.textContent = "";
+      if (resendBtn instanceof HTMLButtonElement) {
+        resendBtn.classList.remove("hidden");
+        resendBtn.disabled = Boolean(state.auth.submitting);
+      }
+    }
+  } else {
+    if (resendText) resendText.textContent = "";
+    if (resendBtn instanceof HTMLButtonElement) {
+      resendBtn.classList.add("hidden");
+      resendBtn.disabled = true;
+    }
+  }
+}
+
+function stopAuthResendCooldown(resetState = false) {
+  if (authResendTimer) {
+    clearInterval(authResendTimer);
+    authResendTimer = null;
+  }
+  if (resetState) {
+    state.auth.resendCooldownSec = 0;
+  }
+}
+
+function startAuthResendCooldown(seconds = AUTH_RESEND_COOLDOWN_SECONDS) {
+  stopAuthResendCooldown(false);
+  state.auth.resendCooldownSec = Math.max(0, Math.floor(Number(seconds) || 0));
+  renderAuthGate();
+  if (state.auth.resendCooldownSec <= 0) return;
+  authResendTimer = setInterval(() => {
+    state.auth.resendCooldownSec = Math.max(0, Number(state.auth.resendCooldownSec || 0) - 1);
+    if (state.auth.resendCooldownSec <= 0) {
+      stopAuthResendCooldown(false);
+    }
+    renderAuthGate();
+  }, 1000);
 }
 
 function resetAuthFormState() {
+  stopAuthResendCooldown(true);
   state.auth.pendingEmail = "";
+  state.auth.step = "email_step";
+  state.auth.submitting = false;
   const emailInput = $("#authEmailInput");
-  if (emailInput instanceof HTMLInputElement) emailInput.value = "";
-  const verifyForm = $("#authCodeVerifyForm");
-  if (verifyForm instanceof HTMLFormElement) verifyForm.reset();
-  setAuthCodeVerifyVisible(false);
+  if (emailInput instanceof HTMLInputElement) {
+    emailInput.value = "";
+    emailInput.readOnly = false;
+  }
+  const codeInput = $("#authCodeInput");
+  if (codeInput instanceof HTMLInputElement) {
+    codeInput.value = "";
+  }
+  setAuthMessage("");
+  renderAuthGate();
 }
 
 function syncDevBypassVisibility() {
@@ -1616,89 +1723,121 @@ function syncDevBypassVisibility() {
   }
 }
 
-async function submitAuthCodeRequestForm(event) {
-  event.preventDefault();
-  const form = event.currentTarget;
-  if (!(form instanceof HTMLFormElement)) return;
-  const button = $("#authSendCodeBtn");
-  const authMessage = $("#authMessage");
-  const fd = new FormData(form);
-  const email = String(fd.get("email") || "").trim();
-  if (!email) return;
-  if (button instanceof HTMLButtonElement) button.disabled = true;
-  try {
-    const response = await fetch("/api/v1/auth/code/request", {
-      method: "POST",
-      credentials: "same-origin",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify({ email })
-    });
-    const payload = await safeJson(response);
-    if (!response.ok) {
-      const detail =
-        typeof payload?.error === "string"
-          ? payload.error
-          : payload?.error
-            ? JSON.stringify(payload.error)
-            : `${response.status} ${response.statusText}`;
-      throw new Error(detail);
-    }
-    state.auth.pendingEmail = email;
-    setAuthCodeVerifyVisible(true);
-    if (authMessage) authMessage.textContent = t("authCodeSentTo", { email });
-    showToast(t("authSent"));
-  } catch (error) {
-    showToast(String(error?.message || "Failed to request verification code."), true);
-  } finally {
-    if (button instanceof HTMLButtonElement) button.disabled = false;
-  }
+function buildAuthRequestError(response, payload) {
+  const detail =
+    typeof payload?.error === "string"
+      ? payload.error
+      : payload?.error
+        ? JSON.stringify(payload.error)
+        : `${response.status} ${response.statusText}`;
+  const error = new Error(detail);
+  error.status = response.status;
+  return error;
 }
 
-async function submitAuthCodeVerifyForm(event) {
+function resolveAuthErrorMessage(error, phase) {
+  const status = Number(error?.status || 0);
+  if (status === 429) return t("authTooMany");
+  if (status === 502) return t("authEmailFailed");
+  if (phase === "verify" && status === 400) return t("authCodeInvalid");
+  if (phase === "request") return t("authRequestFailed");
+  if (phase === "verify") return t("authVerifyFailed");
+  return String(error?.message || t("authVerifyFailed"));
+}
+
+async function requestAuthCode(email, options = {}) {
+  const asResend = Boolean(options.asResend);
+  const response = await fetch("/api/v1/auth/code/request", {
+    method: "POST",
+    credentials: "same-origin",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ email })
+  });
+  const payload = await safeJson(response);
+  if (!response.ok) {
+    throw buildAuthRequestError(response, payload);
+  }
+  state.auth.pendingEmail = String(email || "").trim();
+  state.auth.step = "code_step";
+  startAuthResendCooldown();
+  setAuthMessage(t("authCodeSentTo", { email: state.auth.pendingEmail }));
+  renderAuthGate();
+  const codeInput = $("#authCodeInput");
+  if (codeInput instanceof HTMLInputElement) codeInput.focus();
+  showToast(asResend ? t("authResendSent") : t("authSent"));
+}
+
+async function submitAuthGateForm(event) {
   event.preventDefault();
   const form = event.currentTarget;
   if (!(form instanceof HTMLFormElement)) return;
-  const button = $("#authVerifyCodeBtn");
-  const authMessage = $("#authMessage");
-  const emailInput = $("#authEmailInput");
+  if (state.auth.submitting) return;
   const fd = new FormData(form);
+  const email = String(fd.get("email") || "").trim();
+  const isCodeStep = state.auth.step === "code_step";
   const code = String(fd.get("code") || "")
     .trim()
     .replace(/\s+/g, "");
-  const email =
-    String(state.auth.pendingEmail || "").trim() ||
-    (emailInput instanceof HTMLInputElement ? String(emailInput.value || "").trim() : "");
-  if (!email || !code) return;
-  if (button instanceof HTMLButtonElement) button.disabled = true;
+
+  if (!email) return;
+  if (isCodeStep && !code) return;
+
+  state.auth.submitting = true;
+  setAuthMessage("");
+  renderAuthGate();
   try {
-    const response = await fetch("/api/v1/auth/code/verify", {
+    if (!isCodeStep) {
+      await requestAuthCode(email, { asResend: false });
+      return;
+    }
+
+    const verifyRes = await fetch("/api/v1/auth/code/verify", {
       method: "POST",
       credentials: "same-origin",
       headers: { "content-type": "application/json" },
-      body: JSON.stringify({ email, code })
+      body: JSON.stringify({ email: state.auth.pendingEmail || email, code })
     });
-    const payload = await safeJson(response);
-    if (!response.ok) {
-      const detail =
-        typeof payload?.error === "string"
-          ? payload.error
-          : payload?.error
-            ? JSON.stringify(payload.error)
-            : `${response.status} ${response.statusText}`;
-      throw new Error(detail);
+    const verifyPayload = await safeJson(verifyRes);
+    if (!verifyRes.ok) {
+      throw buildAuthRequestError(verifyRes, verifyPayload);
     }
-    if (authMessage) authMessage.textContent = "";
+    setAuthMessage("");
     await loadAuthSession();
     if (!state.auth.authenticated) {
-      throw new Error("Sign-in failed. Please try again.");
+      throw new Error(t("authVerifyFailed"));
     }
     hideAuthGate();
     showToast(t("authSignedIn"));
     await loadAll();
   } catch (error) {
-    showToast(String(error?.message || "Verification failed."), true);
+    const message = resolveAuthErrorMessage(error, isCodeStep ? "verify" : "request");
+    setAuthMessage(message, { error: true });
+    showToast(message, true);
   } finally {
-    if (button instanceof HTMLButtonElement) button.disabled = false;
+    state.auth.submitting = false;
+    renderAuthGate();
+  }
+}
+
+async function resendAuthCode() {
+  if (state.auth.step !== "code_step") return;
+  if (state.auth.submitting) return;
+  if (Number(state.auth.resendCooldownSec || 0) > 0) return;
+  const email = String(state.auth.pendingEmail || "").trim();
+  if (!email) return;
+
+  state.auth.submitting = true;
+  setAuthMessage("");
+  renderAuthGate();
+  try {
+    await requestAuthCode(email, { asResend: true });
+  } catch (error) {
+    const message = resolveAuthErrorMessage(error, "request");
+    setAuthMessage(message, { error: true });
+    showToast(message, true);
+  } finally {
+    state.auth.submitting = false;
+    renderAuthGate();
   }
 }
 
@@ -1715,9 +1854,13 @@ async function logoutCurrentSession() {
   state.auth.user = null;
   state.auth.devBypass = false;
   state.auth.pendingEmail = "";
+  state.auth.step = "email_step";
+  state.auth.submitting = false;
+  stopAuthResendCooldown(true);
   closeSheet("settingsSheet");
   closeAllSheets();
   closeUtilityPanel();
+  setAuthMessage("");
   showAuthGate();
 }
 
@@ -3369,7 +3512,9 @@ function renderPlannedBudgetCard(dashboard) {
   if (!summary || !list || !pieView || !toggleBtn) return;
 
   const showPie = Boolean(state.ui.budgetPieView);
-  toggleBtn.textContent = showPie ? "≣" : "◔";
+  toggleBtn.innerHTML = showPie
+    ? `<svg width="15" height="15" viewBox="0 0 15 15" fill="none" aria-hidden="true"><rect x="2" y="3.5" width="11" height="1.6" rx="0.8" fill="currentColor"/><rect x="2" y="6.7" width="11" height="1.6" rx="0.8" fill="currentColor"/><rect x="2" y="9.9" width="11" height="1.6" rx="0.8" fill="currentColor"/></svg>`
+    : `<svg width="15" height="15" viewBox="0 0 15 15" fill="none" aria-hidden="true"><path d="M7.5 1.5v6h6a6 6 0 1 1-6-6Z" fill="currentColor" opacity="0.45"/><path d="M7.5 1.5a6 6 0 0 1 6 6h-6V1.5Z" fill="currentColor"/></svg>`;
   const toggleLabel = showPie ? t("budgetViewToggleToList") : t("budgetViewToggleToPie");
   toggleBtn.setAttribute("aria-label", toggleLabel);
   toggleBtn.setAttribute("title", toggleLabel);
@@ -4332,10 +4477,11 @@ function applyI18n() {
   setText("authTitle", t("authTitle"));
   setText("authSubtitle", t("authSubtitle"));
   setText("authEmailLabel", t("authEmailLabel"));
-  setText("authSendCodeBtn", t("authSendBtn"));
+  setText("authContinueBtn", t("authContinueBtn"));
   setText("authCodeLabel", t("authCodeLabel"));
-  setText("authVerifyCodeBtn", t("authVerifyBtn"));
+  setText("authResendBtn", t("authResendBtn"));
   setText("authHint", t("authHint"));
+  renderAuthGate();
   setText("subtitleText", t("subtitle"));
   setText("monthLabelText", t("month"));
   setText("dashboardTitle", t("dashboard"));
@@ -4717,6 +4863,9 @@ function initDashboardDrag() {
   function startDrag(card, clientY) {
     active = true;
     dragEl = card;
+    // Lock selection globally so no text gets highlighted during drag
+    document.body.style.webkitUserSelect = "none";
+    document.body.style.userSelect = "none";
     const rect = card.getBoundingClientRect();
     dragOffsetY = clientY - rect.top;
 
@@ -4739,9 +4888,15 @@ function initDashboardDrag() {
     movePlaceholder(clientY);
   }
 
+  function unlockSelection() {
+    document.body.style.webkitUserSelect = "";
+    document.body.style.userSelect = "";
+  }
+
   function endDrag() {
     if (!active) return;
     active = false;
+    unlockSelection();
     // Place real card where placeholder is
     container.insertBefore(dragEl, placeholder);
     placeholder.remove();
@@ -4758,6 +4913,7 @@ function initDashboardDrag() {
   function cancelDrag() {
     if (!active) return;
     active = false;
+    unlockSelection();
     placeholder && placeholder.remove();
     placeholder = null;
     if (dragEl) {
@@ -4773,8 +4929,19 @@ function initDashboardDrag() {
   container.addEventListener("touchstart", (e) => {
     const card = e.target.closest("[data-sort-id]");
     if (!card) return;
+    // Lock selection immediately so iOS doesn't trigger text-select callout
+    document.body.style.webkitUserSelect = "none";
+    document.body.style.userSelect = "none";
     const clientY = e.touches[0].clientY;
     longPressTimer = setTimeout(() => startDrag(card, clientY), 500);
+  }, { passive: false });
+
+  // If touch ends/moves before drag starts, restore selection
+  container.addEventListener("touchend", () => {
+    if (longPressTimer) unlockSelection();
+  }, { passive: true });
+  container.addEventListener("touchcancel", () => {
+    if (longPressTimer) unlockSelection();
   }, { passive: true });
 
   window.addEventListener("touchmove", (e) => {
