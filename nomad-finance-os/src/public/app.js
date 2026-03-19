@@ -20,7 +20,8 @@ const state = {
     authenticated: false,
     user: null,
     allowDevBypass: false,
-    devBypass: false
+    devBypass: false,
+    pendingEmail: ""
   },
   latestExtractionId: null,
   latestExtractionDraft: null,
@@ -138,11 +139,15 @@ const I18N = {
     addIncome: "💰 Add Income",
     addTransfer: "🔁 Add Transfer",
     authTitle: "Nomad Finance OS",
-    authSubtitle: "Sign in with your email magic link.",
+    authSubtitle: "Sign in with your email verification code.",
     authEmailLabel: "Email",
-    authSendBtn: "Send Magic Link",
-    authHint: "We'll send a sign-in link that expires in 15 minutes.",
-    authSent: "Magic link sent. Check your inbox.",
+    authSendBtn: "Send Code",
+    authCodeLabel: "Verification Code",
+    authVerifyBtn: "Verify and Sign In",
+    authHint: "We'll send a 6-digit code that expires in 10 minutes.",
+    authSent: "Verification code sent. Check your inbox.",
+    authCodeSentTo: "Code sent to {email}. Enter it below.",
+    authSignedIn: "Signed in successfully.",
     authSessionExpired: "Session expired. Please sign in again.",
     close: "Close",
     date: "Date",
@@ -359,11 +364,15 @@ const I18N = {
     addIncome: "💰 新增收入",
     addTransfer: "🔁 新增转账",
     authTitle: "Nomad Finance OS",
-    authSubtitle: "使用邮箱 Magic Link 登录。",
+    authSubtitle: "使用邮箱验证码登录。",
     authEmailLabel: "邮箱",
-    authSendBtn: "发送登录链接",
-    authHint: "我们会发送一个 15 分钟内有效的登录链接。",
-    authSent: "登录链接已发送，请检查邮箱。",
+    authSendBtn: "发送验证码",
+    authCodeLabel: "验证码",
+    authVerifyBtn: "验证并登录",
+    authHint: "我们会发送一个 10 分钟内有效的 6 位验证码。",
+    authSent: "验证码已发送，请检查邮箱。",
+    authCodeSentTo: "验证码已发送到 {email}，请输入验证码。",
+    authSignedIn: "登录成功。",
     authSessionExpired: "登录已过期，请重新登录。",
     close: "关闭",
     date: "日期",
@@ -578,9 +587,13 @@ function bindUI() {
     syncControlState();
     await loadAll();
   });
-  const magicLinkForm = $("#magicLinkRequestForm");
-  if (magicLinkForm) {
-    magicLinkForm.addEventListener("submit", submitMagicLinkRequestForm);
+  const authCodeRequestForm = $("#authCodeRequestForm");
+  if (authCodeRequestForm) {
+    authCodeRequestForm.addEventListener("submit", submitAuthCodeRequestForm);
+  }
+  const authCodeVerifyForm = $("#authCodeVerifyForm");
+  if (authCodeVerifyForm) {
+    authCodeVerifyForm.addEventListener("submit", submitAuthCodeVerifyForm);
   }
   const quickLogoutBtn = $("#quickLogoutBtn");
   if (quickLogoutBtn) {
@@ -1562,6 +1575,7 @@ function showAuthGate() {
     gate.setAttribute("aria-hidden", "false");
   }
   document.body.classList.add("auth-required");
+  setAuthCodeVerifyVisible(Boolean(state.auth.pendingEmail));
   syncDevBypassVisibility();
 }
 
@@ -1574,6 +1588,21 @@ function hideAuthGate() {
   document.body.classList.remove("auth-required");
   const authMessage = $("#authMessage");
   if (authMessage) authMessage.textContent = "";
+  resetAuthFormState();
+}
+
+function setAuthCodeVerifyVisible(visible) {
+  const verifyForm = $("#authCodeVerifyForm");
+  if (verifyForm) verifyForm.classList.toggle("hidden", !visible);
+}
+
+function resetAuthFormState() {
+  state.auth.pendingEmail = "";
+  const emailInput = $("#authEmailInput");
+  if (emailInput instanceof HTMLInputElement) emailInput.value = "";
+  const verifyForm = $("#authCodeVerifyForm");
+  if (verifyForm instanceof HTMLFormElement) verifyForm.reset();
+  setAuthCodeVerifyVisible(false);
 }
 
 function syncDevBypassVisibility() {
@@ -1587,18 +1616,18 @@ function syncDevBypassVisibility() {
   }
 }
 
-async function submitMagicLinkRequestForm(event) {
+async function submitAuthCodeRequestForm(event) {
   event.preventDefault();
   const form = event.currentTarget;
   if (!(form instanceof HTMLFormElement)) return;
-  const button = $("#authRequestBtn");
+  const button = $("#authSendCodeBtn");
   const authMessage = $("#authMessage");
   const fd = new FormData(form);
   const email = String(fd.get("email") || "").trim();
   if (!email) return;
   if (button instanceof HTMLButtonElement) button.disabled = true;
   try {
-    const response = await fetch("/api/v1/auth/magic-link/request", {
+    const response = await fetch("/api/v1/auth/code/request", {
       method: "POST",
       credentials: "same-origin",
       headers: { "content-type": "application/json" },
@@ -1614,10 +1643,60 @@ async function submitMagicLinkRequestForm(event) {
             : `${response.status} ${response.statusText}`;
       throw new Error(detail);
     }
-    if (authMessage) authMessage.textContent = t("authSent");
+    state.auth.pendingEmail = email;
+    setAuthCodeVerifyVisible(true);
+    if (authMessage) authMessage.textContent = t("authCodeSentTo", { email });
     showToast(t("authSent"));
   } catch (error) {
-    showToast(String(error?.message || "Failed to request magic link."), true);
+    showToast(String(error?.message || "Failed to request verification code."), true);
+  } finally {
+    if (button instanceof HTMLButtonElement) button.disabled = false;
+  }
+}
+
+async function submitAuthCodeVerifyForm(event) {
+  event.preventDefault();
+  const form = event.currentTarget;
+  if (!(form instanceof HTMLFormElement)) return;
+  const button = $("#authVerifyCodeBtn");
+  const authMessage = $("#authMessage");
+  const emailInput = $("#authEmailInput");
+  const fd = new FormData(form);
+  const code = String(fd.get("code") || "")
+    .trim()
+    .replace(/\s+/g, "");
+  const email =
+    String(state.auth.pendingEmail || "").trim() ||
+    (emailInput instanceof HTMLInputElement ? String(emailInput.value || "").trim() : "");
+  if (!email || !code) return;
+  if (button instanceof HTMLButtonElement) button.disabled = true;
+  try {
+    const response = await fetch("/api/v1/auth/code/verify", {
+      method: "POST",
+      credentials: "same-origin",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ email, code })
+    });
+    const payload = await safeJson(response);
+    if (!response.ok) {
+      const detail =
+        typeof payload?.error === "string"
+          ? payload.error
+          : payload?.error
+            ? JSON.stringify(payload.error)
+            : `${response.status} ${response.statusText}`;
+      throw new Error(detail);
+    }
+    if (authMessage) authMessage.textContent = "";
+    await loadAuthSession();
+    if (!state.auth.authenticated) {
+      throw new Error("Sign-in failed. Please try again.");
+    }
+    hideAuthGate();
+    showToast(t("authSignedIn"));
+    await loadAll();
+  } catch (error) {
+    showToast(String(error?.message || "Verification failed."), true);
   } finally {
     if (button instanceof HTMLButtonElement) button.disabled = false;
   }
@@ -1635,6 +1714,7 @@ async function logoutCurrentSession() {
   state.auth.authenticated = false;
   state.auth.user = null;
   state.auth.devBypass = false;
+  state.auth.pendingEmail = "";
   closeSheet("settingsSheet");
   closeAllSheets();
   closeUtilityPanel();
@@ -4252,7 +4332,9 @@ function applyI18n() {
   setText("authTitle", t("authTitle"));
   setText("authSubtitle", t("authSubtitle"));
   setText("authEmailLabel", t("authEmailLabel"));
-  setText("authRequestBtn", t("authSendBtn"));
+  setText("authSendCodeBtn", t("authSendBtn"));
+  setText("authCodeLabel", t("authCodeLabel"));
+  setText("authVerifyCodeBtn", t("authVerifyBtn"));
   setText("authHint", t("authHint"));
   setText("subtitleText", t("subtitle"));
   setText("monthLabelText", t("month"));
@@ -4593,7 +4675,9 @@ function applyDashboardOrder() {
 function saveDashboardOrder() {
   const container = document.getElementById("dashboardSortable");
   if (!container) return;
-  const ids = [...container.children].map(c => c.dataset.sortId).filter(Boolean);
+  const ids = [...container.children]
+    .filter(c => !c.classList.contains("drag-placeholder"))
+    .map(c => c.dataset.sortId).filter(Boolean);
   try { localStorage.setItem(DASH_ORDER_KEY, JSON.stringify(ids)); } catch {}
 }
 
@@ -4602,76 +4686,139 @@ function initDashboardDrag() {
   if (!container) return;
   applyDashboardOrder();
 
-  let dragging = null;
+  // State
+  let dragEl = null;         // the card being dragged
+  let placeholder = null;   // ghost element holding the card's space
   let longPressTimer = null;
+  let dragOffsetY = 0;       // finger Y relative to card top
+  let active = false;
 
-  // ── Touch ──
-  container.addEventListener("touchstart", (e) => {
-    const card = e.target.closest("[data-sort-id]");
-    if (!card) return;
-    longPressTimer = setTimeout(() => {
-      dragging = card;
-      card.classList.add("is-dragging");
-      container.classList.add("sort-active");
-      if (navigator.vibrate) navigator.vibrate(35);
-    }, 480);
-  }, { passive: true });
+  // ── Helpers ──
+  function snapshots() {
+    // Capture {el, midY} for all non-drag, non-placeholder children (live rects)
+    return [...container.children]
+      .filter(c => c !== dragEl && !c.classList.contains("drag-placeholder"))
+      .map(c => ({ el: c, midY: c.getBoundingClientRect().top + c.getBoundingClientRect().height / 2 }));
+  }
 
-  container.addEventListener("touchmove", (e) => {
-    if (longPressTimer) { clearTimeout(longPressTimer); longPressTimer = null; }
-    if (!dragging) return;
-    e.preventDefault();
-    repositionByY(e.touches[0].clientY);
-  }, { passive: false });
-
-  container.addEventListener("touchend", () => {
-    if (longPressTimer) { clearTimeout(longPressTimer); longPressTimer = null; }
-    if (dragging) endDrag();
-  });
-
-  container.addEventListener("touchcancel", () => {
-    if (longPressTimer) { clearTimeout(longPressTimer); longPressTimer = null; }
-    if (dragging) endDrag();
-  });
-
-  // ── Mouse (desktop) ──
-  container.addEventListener("mousedown", (e) => {
-    const handle = e.target.closest(".drag-handle");
-    if (!handle) return;
-    const card = handle.closest("[data-sort-id]");
-    if (!card) return;
-    e.preventDefault();
-    dragging = card;
-    card.classList.add("is-dragging");
-    container.classList.add("sort-active");
-  });
-
-  document.addEventListener("mousemove", (e) => {
-    if (!dragging) return;
-    repositionByY(e.clientY);
-  });
-
-  document.addEventListener("mouseup", () => {
-    if (dragging) endDrag();
-  });
-
-  function repositionByY(y) {
-    const siblings = [...container.children].filter(c => c !== dragging);
+  function movePlaceholder(clientY) {
+    const snaps = snapshots();
     let insertBefore = null;
-    for (const sib of siblings) {
-      const r = sib.getBoundingClientRect();
-      if (y < r.top + r.height * 0.5) { insertBefore = sib; break; }
+    for (const s of snaps) {
+      if (clientY < s.midY) { insertBefore = s.el; break; }
     }
-    if (insertBefore) container.insertBefore(dragging, insertBefore);
-    else container.appendChild(dragging);
+    if (insertBefore) container.insertBefore(placeholder, insertBefore);
+    else container.appendChild(placeholder);
+    // Keep dragEl floating via transform
+    const contRect = container.getBoundingClientRect();
+    dragEl.style.transform = `translateY(${clientY - contRect.top - dragOffsetY}px)`;
+  }
+
+  function startDrag(card, clientY) {
+    active = true;
+    dragEl = card;
+    const rect = card.getBoundingClientRect();
+    dragOffsetY = clientY - rect.top;
+
+    // Create placeholder matching card height
+    placeholder = document.createElement("div");
+    placeholder.className = "drag-placeholder";
+    placeholder.style.height = rect.height + "px";
+    // Insert placeholder in card's current position, then pull card out of flow
+    container.insertBefore(placeholder, card);
+    card.style.position = "absolute";
+    card.style.top = "0";
+    card.style.left = "0";
+    card.style.width = rect.width + "px";
+    card.style.zIndex = "200";
+    card.style.pointerEvents = "none";
+    card.classList.add("is-dragging");
+    container.style.position = "relative";
+    container.classList.add("sort-active");
+    if (navigator.vibrate) navigator.vibrate(38);
+    movePlaceholder(clientY);
   }
 
   function endDrag() {
-    dragging.classList.remove("is-dragging");
+    if (!active) return;
+    active = false;
+    // Place real card where placeholder is
+    container.insertBefore(dragEl, placeholder);
+    placeholder.remove();
+    placeholder = null;
+    // Reset styles
+    dragEl.style.cssText = "";
+    dragEl.classList.remove("is-dragging");
+    container.style.position = "";
     container.classList.remove("sort-active");
-    dragging = null;
+    dragEl = null;
     saveDashboardOrder();
   }
+
+  function cancelDrag() {
+    if (!active) return;
+    active = false;
+    placeholder && placeholder.remove();
+    placeholder = null;
+    if (dragEl) {
+      dragEl.style.cssText = "";
+      dragEl.classList.remove("is-dragging");
+    }
+    dragEl = null;
+    container.style.position = "";
+    container.classList.remove("sort-active");
+  }
+
+  // ── Touch events ──
+  container.addEventListener("touchstart", (e) => {
+    const card = e.target.closest("[data-sort-id]");
+    if (!card) return;
+    const clientY = e.touches[0].clientY;
+    longPressTimer = setTimeout(() => startDrag(card, clientY), 500);
+  }, { passive: true });
+
+  window.addEventListener("touchmove", (e) => {
+    if (longPressTimer) { clearTimeout(longPressTimer); longPressTimer = null; }
+    if (!active) return;
+    e.preventDefault();
+    movePlaceholder(e.touches[0].clientY);
+  }, { passive: false });
+
+  window.addEventListener("touchend", () => {
+    if (longPressTimer) { clearTimeout(longPressTimer); longPressTimer = null; }
+    if (active) endDrag();
+  });
+
+  window.addEventListener("touchcancel", () => {
+    if (longPressTimer) { clearTimeout(longPressTimer); longPressTimer = null; }
+    cancelDrag();
+  });
+
+  // ── Mouse events (desktop long-press via mousedown hold) ──
+  container.addEventListener("mousedown", (e) => {
+    const card = e.target.closest("[data-sort-id]");
+    if (!card) return;
+    // Ignore clicks on interactive children
+    if (e.target.closest("button,input,select,a,textarea")) return;
+    const clientY = e.clientY;
+    longPressTimer = setTimeout(() => {
+      e.preventDefault();
+      startDrag(card, clientY);
+    }, 500);
+  });
+
+  window.addEventListener("mousemove", (e) => {
+    if (longPressTimer && Math.abs(e.movementY) > 4) {
+      clearTimeout(longPressTimer); longPressTimer = null;
+    }
+    if (!active) return;
+    movePlaceholder(e.clientY);
+  });
+
+  window.addEventListener("mouseup", () => {
+    if (longPressTimer) { clearTimeout(longPressTimer); longPressTimer = null; }
+    if (active) endDrag();
+  });
 }
 
 document.addEventListener("DOMContentLoaded", initDashboardDrag);

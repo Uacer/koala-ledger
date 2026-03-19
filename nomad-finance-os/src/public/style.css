@@ -727,15 +727,23 @@ h3 {
 }
 
 .is-dragging {
-  box-shadow: 0 8px 32px rgba(56,44,33,.18), 0 2px 8px rgba(56,44,33,.12) !important;
-  opacity: 0.96;
-  transform: scale(1.01);
-  z-index: 10;
-  transition: box-shadow 120ms ease, transform 120ms ease;
+  box-shadow: 0 12px 40px rgba(56,44,33,.22), 0 4px 12px rgba(56,44,33,.14) !important;
+  opacity: 0.97;
+  transform: scale(1.02) !important;
+  z-index: 200;
+  cursor: grabbing;
+}
+
+.drag-placeholder {
+  border-radius: 20px;
+  background: color-mix(in oklab, var(--line), transparent 55%);
+  border: 2px dashed color-mix(in oklab, var(--line), transparent 20%);
+  box-sizing: border-box;
+  transition: height 120ms ease;
 }
 
 .sort-active .dashboard-card:not(.is-dragging) {
-  transition: transform 200ms ease;
+  transition: margin 180ms ease;
 }
 
 /* Today Expenses Card */
@@ -756,8 +764,16 @@ h3 {
   color: var(--danger);
 }
 
-#todayExpensesCard #todayExpensesList {
-  margin-top: 8px;
+#todayExpensesCard #todayExpensesList,
+#recentExpensesCard #recentExpensesList {
+  margin-top: 14px;
+}
+
+/* Section head: more breathing room below title */
+.card > .section-head {
+  margin-bottom: 2px;
+  padding-bottom: 4px;
+  border-bottom: 1px solid color-mix(in oklab, var(--line), transparent 50%);
 }
 
 .infographic-grid {
