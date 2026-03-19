@@ -3891,31 +3891,42 @@ function renderTodayExpensesCard(rows) {
   if (!listEl || !totalEl) return;
   const today = new Date().toISOString().slice(0, 10);
   const base = state.settings?.base_currency || 'USD';
-  const todayRows = (Array.isArray(rows) ? rows : []).filter(
-    (r) => r.tx_date === today && r.type === 'expense'
-  );
-  const total = todayRows.reduce((s, r) => s + (Number(r.amount_base) || 0), 0);
+  // All today's transactions (not just expenses)
+  const todayRows = (Array.isArray(rows) ? rows : []).filter((r) => r.tx_date === today);
+  // Total = sum of expense amounts (absolute)
+  const total = todayRows.reduce((s, r) => s + (r.type === 'expense' ? (Number(r.amount_base) || 0) : 0), 0);
   totalEl.innerHTML = todayRows.length
     ? `${escapeHtml(formatMoney(total))}<span class="today-total-unit">${escapeHtml(base)}</span>`
     : '';
   if (!todayRows.length) {
-    listEl.innerHTML = '<div class="compact-row muted">No expenses today</div>';
+    listEl.innerHTML = '<div class="incard-empty muted">No transactions today</div>';
     return;
   }
   listEl.innerHTML = todayRows.map((row) => {
-    const title = formatRecentTransactionTitle(row);
+    // Title: L2 only for expense, type label for income/transfer
+    let title = '';
+    if (row.type === 'expense') {
+      title = row.category_l2 ? withL2Emoji(row.category_l2, row.category_l1) : (row.category_l1 ? withL1Emoji(row.category_l1) : txTypeLabel('expense'));
+    } else if (row.type === 'income') {
+      title = txTypeLabel('income');
+    } else {
+      const reason = row.transfer_reason && row.transfer_reason !== 'normal' ? ` · ${getTransferReasonLabel(row.transfer_reason)}` : '';
+      title = txTypeLabel('transfer') + reason;
+    }
     const showOrig = row.currency_original && row.currency_original.toUpperCase() !== base.toUpperCase();
-    const signedBase = -Math.abs(Number(row.amount_base));
-    const signedOrig = -Math.abs(Number(row.amount_original));
+    // Absolute amounts — color conveys direction, no minus sign needed
+    const baseAmt = Math.abs(Number(row.amount_base));
+    const origAmt = Math.abs(Number(row.amount_original));
+    const amtClass = row.type === 'income' ? 'tx-amount income' : row.type === 'transfer' ? 'tx-amount transfer' : 'tx-amount expense';
     return `
       <article class="incard-row clickable" data-tx-id="${row.id}">
         <div class="tx-row-main">
           <span class="tx-row-title">${escapeHtml(title)}</span>
-          <span class="tx-amount expense">${escapeHtml(formatMoney(signedBase))}<span class="tx-unit">${escapeHtml(base)}</span></span>
+          <span class="${amtClass}">${escapeHtml(formatMoney(baseAmt))}<span class="tx-unit">${escapeHtml(base)}</span></span>
         </div>
         <div class="tx-row-sub">
-          <span class="tx-row-meta">${row.account_from_id ? escapeHtml(row.account_from_id) + ' · ' : ''}${escapeHtml(row.tx_date)}</span>
-          ${showOrig ? `<span class="tx-orig">${escapeHtml(formatMoney(signedOrig))} ${escapeHtml(row.currency_original)}</span>` : ''}
+          <span class="tx-row-meta">${escapeHtml(row.tx_date)}</span>
+          ${showOrig ? `<span class="tx-orig">${escapeHtml(formatMoney(origAmt))} ${escapeHtml(row.currency_original)}</span>` : ''}
         </div>
         ${row.note ? `<div class="tx-note">${escapeHtml(row.note)}</div>` : ''}
       </article>`;
@@ -4563,3 +4574,104 @@ function txTypeLabel(type) {
   if (type === "transfer") return t("txTypeTransfer");
   return String(type || "").toUpperCase();
 }
+
+// ── Dashboard drag-to-reorder ──────────────────────────────────────────────
+const DASH_ORDER_KEY = "nomad-dash-order";
+
+function applyDashboardOrder() {
+  const container = document.getElementById("dashboardSortable");
+  if (!container) return;
+  let order;
+  try { order = JSON.parse(localStorage.getItem(DASH_ORDER_KEY) || "[]"); } catch { order = []; }
+  if (!Array.isArray(order) || !order.length) return;
+  for (const id of order) {
+    const el = container.querySelector(`[data-sort-id="${id}"]`);
+    if (el) container.appendChild(el);
+  }
+}
+
+function saveDashboardOrder() {
+  const container = document.getElementById("dashboardSortable");
+  if (!container) return;
+  const ids = [...container.children].map(c => c.dataset.sortId).filter(Boolean);
+  try { localStorage.setItem(DASH_ORDER_KEY, JSON.stringify(ids)); } catch {}
+}
+
+function initDashboardDrag() {
+  const container = document.getElementById("dashboardSortable");
+  if (!container) return;
+  applyDashboardOrder();
+
+  let dragging = null;
+  let longPressTimer = null;
+
+  // ── Touch ──
+  container.addEventListener("touchstart", (e) => {
+    const card = e.target.closest("[data-sort-id]");
+    if (!card) return;
+    longPressTimer = setTimeout(() => {
+      dragging = card;
+      card.classList.add("is-dragging");
+      container.classList.add("sort-active");
+      if (navigator.vibrate) navigator.vibrate(35);
+    }, 480);
+  }, { passive: true });
+
+  container.addEventListener("touchmove", (e) => {
+    if (longPressTimer) { clearTimeout(longPressTimer); longPressTimer = null; }
+    if (!dragging) return;
+    e.preventDefault();
+    repositionByY(e.touches[0].clientY);
+  }, { passive: false });
+
+  container.addEventListener("touchend", () => {
+    if (longPressTimer) { clearTimeout(longPressTimer); longPressTimer = null; }
+    if (dragging) endDrag();
+  });
+
+  container.addEventListener("touchcancel", () => {
+    if (longPressTimer) { clearTimeout(longPressTimer); longPressTimer = null; }
+    if (dragging) endDrag();
+  });
+
+  // ── Mouse (desktop) ──
+  container.addEventListener("mousedown", (e) => {
+    const handle = e.target.closest(".drag-handle");
+    if (!handle) return;
+    const card = handle.closest("[data-sort-id]");
+    if (!card) return;
+    e.preventDefault();
+    dragging = card;
+    card.classList.add("is-dragging");
+    container.classList.add("sort-active");
+  });
+
+  document.addEventListener("mousemove", (e) => {
+    if (!dragging) return;
+    repositionByY(e.clientY);
+  });
+
+  document.addEventListener("mouseup", () => {
+    if (dragging) endDrag();
+  });
+
+  function repositionByY(y) {
+    const siblings = [...container.children].filter(c => c !== dragging);
+    let insertBefore = null;
+    for (const sib of siblings) {
+      const r = sib.getBoundingClientRect();
+      if (y < r.top + r.height * 0.5) { insertBefore = sib; break; }
+    }
+    if (insertBefore) container.insertBefore(dragging, insertBefore);
+    else container.appendChild(dragging);
+  }
+
+  function endDrag() {
+    dragging.classList.remove("is-dragging");
+    container.classList.remove("sort-active");
+    dragging = null;
+    saveDashboardOrder();
+  }
+}
+
+document.addEventListener("DOMContentLoaded", initDashboardDrag);

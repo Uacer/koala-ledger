@@ -697,6 +697,47 @@ h3 {
   font-size: 1.1rem;
 }
 
+/* ── Dashboard sortable container ── */
+#dashboardSortable {
+  display: grid;
+  gap: 14px;
+}
+
+/* Drag handle — three-dot grip shown on hover/long-press */
+.dashboard-card {
+  position: relative;
+}
+
+.dashboard-card::before {
+  content: "⠿";
+  position: absolute;
+  top: 14px;
+  right: 14px;
+  font-size: 1rem;
+  color: var(--ink-soft);
+  opacity: 0;
+  transition: opacity 200ms ease;
+  pointer-events: none;
+  letter-spacing: -2px;
+}
+
+.sort-active .dashboard-card::before,
+.dashboard-card:hover::before {
+  opacity: 0.3;
+}
+
+.is-dragging {
+  box-shadow: 0 8px 32px rgba(56,44,33,.18), 0 2px 8px rgba(56,44,33,.12) !important;
+  opacity: 0.96;
+  transform: scale(1.01);
+  z-index: 10;
+  transition: box-shadow 120ms ease, transform 120ms ease;
+}
+
+.sort-active .dashboard-card:not(.is-dragging) {
+  transition: transform 200ms ease;
+}
+
 /* Today Expenses Card */
 #todayExpensesCard {
   border-left: 4px solid var(--danger);

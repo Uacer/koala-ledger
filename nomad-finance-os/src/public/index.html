@@ -91,14 +91,15 @@
           <div class="hero-legend" id="heroCompositionLegend"></div>
           <div id="heroSubMetrics" class="hero-submetrics"></div>
         </article>
-        <article class="card" id="todayExpensesCard">
+        <div id="dashboardSortable">
+        <article class="card dashboard-card" id="todayExpensesCard" data-sort-id="todayExpensesCard">
           <div class="section-head">
             <h3 class="today-expenses-title">Today</h3>
             <span class="today-expenses-total" id="todayExpensesTotal"></span>
           </div>
           <div id="todayExpensesList" class="list-block compact-list"></div>
         </article>
-        <section class="infographic-grid">
+        <section class="infographic-grid dashboard-card" data-sort-id="infographicGrid">
           <article class="card">
             <div class="section-head">
               <h3 id="budgetPlanTitle">Planned Budget</h3>
@@ -122,7 +123,7 @@
             <div id="cashFlowBars" class="mini-bars"></div>
           </article>
         </section>
-        <article class="card" id="recentExpensesCard">
+        <article class="card dashboard-card" id="recentExpensesCard" data-sort-id="recentExpensesCard">
           <div class="section-head">
             <button
               id="recentExpensesTitle"
@@ -135,7 +136,7 @@
           </div>
           <div id="recentExpensesList" class="list-block compact-list"></div>
         </article>
-        <article class="card advanced-section" id="trendCard">
+        <article class="card advanced-section dashboard-card" id="trendCard" data-sort-id="trendCard">
           <div class="section-head">
             <h3 id="trendTitle">Spending Curve</h3>
             <select id="trendMode" class="btn btn-ghost">
@@ -158,10 +159,11 @@
           </div>
           <div id="trendLegend" class="muted"></div>
         </article>
-        <article class="card advanced-section" id="riskCard">
+        <article class="card advanced-section dashboard-card" id="riskCard" data-sort-id="riskCard">
           <h3 id="riskTitle">Risk Metrics</h3>
           <div id="riskMetrics" class="list-block"></div>
         </article>
+        </div>
       </section>
 
       <section id="capturePanel" class="panel">
