@@ -4836,8 +4836,11 @@ function initDashboardDrag() {
   let dragEl = null;         // the card being dragged
   let placeholder = null;   // ghost element holding the card's space
   let longPressTimer = null;
+  let pressTimer = null;    // 80ms visual "lift" feedback timer
+  let pressEl = null;       // card being held before drag confirms
   let dragOffsetY = 0;       // finger Y relative to card top
   let active = false;
+  let currentTouchY = 0;   // live finger Y (updated even before drag starts)
 
   // ── Helpers ──
   function snapshots() {
@@ -4893,6 +4896,11 @@ function initDashboardDrag() {
     document.body.style.userSelect = "";
   }
 
+  function clearPressState() {
+    if (pressTimer) { clearTimeout(pressTimer); pressTimer = null; }
+    if (pressEl) { pressEl.classList.remove("press-ready"); pressEl = null; }
+  }
+
   function endDrag() {
     if (!active) return;
     active = false;
@@ -4929,23 +4937,29 @@ function initDashboardDrag() {
   container.addEventListener("touchstart", (e) => {
     const card = e.target.closest("[data-sort-id]");
     if (!card) return;
-    // Lock selection immediately so iOS doesn't trigger text-select callout
     document.body.style.webkitUserSelect = "none";
     document.body.style.userSelect = "none";
-    const clientY = e.touches[0].clientY;
-    longPressTimer = setTimeout(() => startDrag(card, clientY), 500);
+    pressEl = card;
+    currentTouchY = e.touches[0].clientY;
+
+    // 80ms: show subtle "lift" so user knows long-press is registered
+    pressTimer = setTimeout(() => card.classList.add("press-ready"), 80);
+
+    // 500ms: activate drag using current (live) finger position
+    longPressTimer = setTimeout(() => {
+      clearPressState();
+      startDrag(card, currentTouchY);
+    }, 500);
   }, { passive: false });
 
-  // If touch ends/moves before drag starts, restore selection
-  container.addEventListener("touchend", () => {
-    if (longPressTimer) unlockSelection();
-  }, { passive: true });
-  container.addEventListener("touchcancel", () => {
-    if (longPressTimer) unlockSelection();
-  }, { passive: true });
-
   window.addEventListener("touchmove", (e) => {
-    if (longPressTimer) { clearTimeout(longPressTimer); longPressTimer = null; }
+    currentTouchY = e.touches[0].clientY;
+    if (longPressTimer) {
+      // Finger moved — cancel long press and restore
+      clearTimeout(longPressTimer); longPressTimer = null;
+      clearPressState();
+      unlockSelection();
+    }
     if (!active) return;
     e.preventDefault();
     movePlaceholder(e.touches[0].clientY);
@@ -4953,11 +4967,14 @@ function initDashboardDrag() {
 
   window.addEventListener("touchend", () => {
     if (longPressTimer) { clearTimeout(longPressTimer); longPressTimer = null; }
-    if (active) endDrag();
+    clearPressState();
+    if (active) endDrag(); else unlockSelection();
   });
 
   window.addEventListener("touchcancel", () => {
     if (longPressTimer) { clearTimeout(longPressTimer); longPressTimer = null; }
+    clearPressState();
+    unlockSelection();
     cancelDrag();
   });
 

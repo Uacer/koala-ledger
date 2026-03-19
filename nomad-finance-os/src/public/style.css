@@ -750,8 +750,18 @@ h3 {
   opacity: 0.3;
 }
 
+/* 80ms into long-press: card gently lifts to signal "ready to drag" */
+.press-ready {
+  transform: scale(1.025);
+  box-shadow: 0 8px 28px rgba(56,44,33,.16), 0 2px 8px rgba(56,44,33,.1) !important;
+  transition: transform 200ms cubic-bezier(0.34, 1.56, 0.64, 1),
+              box-shadow 200ms ease !important;
+  z-index: 10;
+  position: relative;
+}
+
 .is-dragging {
-  box-shadow: 0 12px 40px rgba(56,44,33,.22), 0 4px 12px rgba(56,44,33,.14) !important;
+  box-shadow: 0 16px 48px rgba(56,44,33,.24), 0 4px 14px rgba(56,44,33,.16) !important;
   opacity: 0.97;
   transform: scale(1.02) !important;
   z-index: 200;
