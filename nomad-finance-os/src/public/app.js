@@ -20,7 +20,11 @@ const state = {
     authenticated: false,
     user: null,
     allowDevBypass: false,
-    devBypass: false
+    devBypass: false,
+    pendingEmail: "",
+    step: "email_step",
+    submitting: false,
+    resendCooldownSec: 0
   },
   latestExtractionId: null,
   latestExtractionDraft: null,
@@ -115,14 +119,14 @@ const I18N = {
   en: {
     subtitle: "A simpler daily money cockpit.",
     month: "Month",
-    dashboard: "🏠 Dashboard",
+    dashboard: "Summary",
     cashFlowPulse: "📈 Cash Flow Pulse",
     liquiditySplit: "Liquidity Split",
     runwaySignal: "Runway Signal",
     riskMetrics: "⚠️ Risk Metrics",
     budgetStatus: "Budget Status (L1 only)",
     netWorthComposition: "🧩 Net Worth Composition",
-    plannedBudget: "📋 Planned Budget",
+    plannedBudget: "Planned Budget",
     recentExpenses: "Transactions",
     viewAllExpenses: "View All",
     budgetPlanSummary: "Planned {planned} · Spent {spent} · Remaining {remaining}",
@@ -138,11 +142,22 @@ const I18N = {
     addIncome: "💰 Add Income",
     addTransfer: "🔁 Add Transfer",
     authTitle: "Nomad Finance OS",
-    authSubtitle: "Sign in with your email magic link.",
+    authSubtitle: "Sign in with your email verification code.",
     authEmailLabel: "Email",
-    authSendBtn: "Send Magic Link",
-    authHint: "We'll send a sign-in link that expires in 15 minutes.",
-    authSent: "Magic link sent. Check your inbox.",
+    authContinueBtn: "Continue",
+    authCodeLabel: "Verification Code",
+    authHint: "We'll send a 6-digit code that expires in 10 minutes.",
+    authSent: "Verification code sent. Check your inbox.",
+    authResendSent: "Verification code resent.",
+    authCodeSentTo: "Code sent to {email}. Enter it below.",
+    authResendIn: "{seconds}s before you can resend code.",
+    authResendBtn: "Resend verification code",
+    authSignedIn: "Signed in successfully.",
+    authCodeInvalid: "Verification code is invalid or expired.",
+    authTooMany: "Too many attempts. Please try again later.",
+    authEmailFailed: "Email delivery failed. Please try again.",
+    authRequestFailed: "Failed to request verification code.",
+    authVerifyFailed: "Verification failed. Please try again.",
     authSessionExpired: "Session expired. Please sign in again.",
     close: "Close",
     date: "Date",
@@ -309,13 +324,22 @@ const I18N = {
     transferReasonDepositLock: "Deposit Lock",
     transferReasonDepositRelease: "Deposit Release",
     agentTokensTitle: "Agent API Tokens",
-    agentTokensHint: "Create a token for your own agent. The plain token is shown only once.",
+    agentTokensHint: "Create a token for your own agent. Token plaintext is shown in a popup only once.",
     agentTokenName: "Token Name",
     createAgentToken: "Create Token",
     latestAgentToken: "Last Created Token (shown once)",
+    agentTokenRevealTitle: "Token Created",
+    agentTokenRevealHint: "Copy it now. For security, this token will not be shown again.",
+    tokenCopied: "Token copied",
+    tokenCopyMissing: "No token to copy",
     agentTokenCreated: "Agent token created",
     agentTokenRevoked: "Agent token revoked",
     copyToken: "Copy",
+    agentQuickstartTitle: "Agent Quickstart",
+    agentQuickstartHint:
+      "Copy one setup block for another agent to download the skill and start calling this API.",
+    copyAgentSetup: "Copy Agent Setup",
+    agentSetupCopied: "Agent setup copied",
     revokeToken: "Revoke",
     tokenScopes: "Scopes",
     tokenLastUsed: "Last used",
@@ -327,14 +351,14 @@ const I18N = {
   zh: {
     subtitle: "更轻量的日常财务驾驶舱。",
     month: "月份",
-    dashboard: "🏠 总览",
+    dashboard: "Summary",
     cashFlowPulse: "📈 现金流脉冲",
     liquiditySplit: "流动性结构",
     runwaySignal: "Runway 信号",
     riskMetrics: "⚠️ 风险指标",
     budgetStatus: "预算进度（仅一级分类）",
     netWorthComposition: "🧩 净资产结构",
-    plannedBudget: "📋 预算计划",
+    plannedBudget: "预算计划",
     recentExpenses: "交易记录",
     viewAllExpenses: "查看全部",
     budgetPlanSummary: "计划 {planned} · 已花 {spent} · 剩余 {remaining}",
@@ -350,11 +374,22 @@ const I18N = {
     addIncome: "💰 新增收入",
     addTransfer: "🔁 新增转账",
     authTitle: "Nomad Finance OS",
-    authSubtitle: "使用邮箱 Magic Link 登录。",
+    authSubtitle: "使用邮箱验证码登录。",
     authEmailLabel: "邮箱",
-    authSendBtn: "发送登录链接",
-    authHint: "我们会发送一个 15 分钟内有效的登录链接。",
-    authSent: "登录链接已发送，请检查邮箱。",
+    authContinueBtn: "继续",
+    authCodeLabel: "验证码",
+    authHint: "我们会发送一个 10 分钟内有效的 6 位验证码。",
+    authSent: "验证码已发送，请检查邮箱。",
+    authResendSent: "验证码已重新发送。",
+    authCodeSentTo: "验证码已发送到 {email}，请输入验证码。",
+    authResendIn: "{seconds}s 后可重新发送验证码。",
+    authResendBtn: "重新发送验证码",
+    authSignedIn: "登录成功。",
+    authCodeInvalid: "验证码无效或已过期。",
+    authTooMany: "操作过于频繁，请稍后再试。",
+    authEmailFailed: "邮件发送失败，请稍后重试。",
+    authRequestFailed: "验证码发送失败，请重试。",
+    authVerifyFailed: "验证码校验失败，请重试。",
     authSessionExpired: "登录已过期，请重新登录。",
     close: "关闭",
     date: "日期",
@@ -520,13 +555,21 @@ const I18N = {
     transferReasonDepositLock: "押金锁定",
     transferReasonDepositRelease: "押金释放",
     agentTokensTitle: "Agent API Token",
-    agentTokensHint: "为你的自有 agent 创建 token。明文仅展示一次。",
+    agentTokensHint: "为你的自有 agent 创建 token。明文只会在弹窗中展示一次。",
     agentTokenName: "Token 名称",
     createAgentToken: "创建 Token",
     latestAgentToken: "最近创建的 Token（仅展示一次）",
+    agentTokenRevealTitle: "Token 已创建",
+    agentTokenRevealHint: "请现在复制，出于安全原因后续不会再次展示明文。",
+    tokenCopied: "Token 已复制",
+    tokenCopyMissing: "没有可复制的 Token",
     agentTokenCreated: "Agent token 已创建",
     agentTokenRevoked: "Agent token 已吊销",
     copyToken: "复制",
+    agentQuickstartTitle: "Agent 快速接入",
+    agentQuickstartHint: "一键复制给其他 agent 的接入指令（含 skill 下载与调用示例）。",
+    copyAgentSetup: "复制接入指令",
+    agentSetupCopied: "接入指令已复制",
     revokeToken: "吊销",
     tokenScopes: "权限",
     tokenLastUsed: "最近使用",
@@ -538,11 +581,13 @@ const I18N = {
 };
 
 const FX_QUOTE_CACHE = new Map();
+const AUTH_RESEND_COOLDOWN_SECONDS = 60;
 const MONEY_FORMATTER = new Intl.NumberFormat(undefined, {
   minimumFractionDigits: 2,
   maximumFractionDigits: 2
 });
 let quickEntryLimitReqSeq = 0;
+let authResendTimer = null;
 
 const $ = (selector) => document.querySelector(selector);
 
@@ -561,9 +606,15 @@ function bindUI() {
     syncControlState();
     await loadAll();
   });
-  const magicLinkForm = $("#magicLinkRequestForm");
-  if (magicLinkForm) {
-    magicLinkForm.addEventListener("submit", submitMagicLinkRequestForm);
+  const authGateForm = $("#authGateForm");
+  if (authGateForm) {
+    authGateForm.addEventListener("submit", submitAuthGateForm);
+  }
+  const authResendBtn = $("#authResendBtn");
+  if (authResendBtn) {
+    authResendBtn.addEventListener("click", () => {
+      void resendAuthCode();
+    });
   }
   const quickLogoutBtn = $("#quickLogoutBtn");
   if (quickLogoutBtn) {
@@ -603,6 +654,18 @@ function bindUI() {
   if (settingsForm) settingsForm.addEventListener("submit", submitSettingsForm);
   const agentTokenForm = $("#agentTokenForm");
   if (agentTokenForm) agentTokenForm.addEventListener("submit", submitAgentTokenForm);
+  const agentTokenRevealCopyBtn = $("#agentTokenRevealCopyBtn");
+  if (agentTokenRevealCopyBtn) {
+    agentTokenRevealCopyBtn.addEventListener("click", () => {
+      void copyLatestAgentToken();
+    });
+  }
+  const agentQuickstartCopyBtn = $("#agentQuickstartCopyBtn");
+  if (agentQuickstartCopyBtn) {
+    agentQuickstartCopyBtn.addEventListener("click", () => {
+      void copyAgentSetupGuide();
+    });
+  }
   $("#captureTextForm").addEventListener("submit", submitCaptureTextForm);
   $("#captureImageForm").addEventListener("submit", submitCaptureImageForm);
   $("#confirmExtractionBtn").addEventListener("click", confirmLatestExtraction);
@@ -866,6 +929,17 @@ function bindUI() {
     if (!Number.isInteger(id) || id <= 0) return;
     openTransactionDetailSheet(id);
   });
+  const todayExpensesListEl = document.getElementById("todayExpensesList");
+  if (todayExpensesListEl) {
+    todayExpensesListEl.addEventListener("click", (event) => {
+      if (!(event.target instanceof Element)) return;
+      const row = event.target.closest("article[data-tx-id]");
+      if (!row) return;
+      const id = Number(row.getAttribute("data-tx-id"));
+      if (!Number.isInteger(id) || id <= 0) return;
+      openTransactionDetailSheet(id);
+    });
+  }
   const debugOnlyFailed = $("#debugOnlyFailed");
   if (debugOnlyFailed) {
     debugOnlyFailed.addEventListener("change", () => {
@@ -1373,6 +1447,86 @@ async function copyDiagnosticsToClipboard() {
   }
 }
 
+async function copyTextToClipboard(text) {
+  const value = String(text || "");
+  if (!value) return false;
+  if (navigator.clipboard?.writeText) {
+    await navigator.clipboard.writeText(value);
+    return true;
+  }
+  const tmp = document.createElement("textarea");
+  tmp.value = value;
+  tmp.setAttribute("readonly", "readonly");
+  tmp.style.position = "fixed";
+  tmp.style.opacity = "0";
+  tmp.style.pointerEvents = "none";
+  document.body.appendChild(tmp);
+  tmp.select();
+  const copied = document.execCommand("copy");
+  document.body.removeChild(tmp);
+  if (!copied) {
+    throw new Error("Clipboard copy is not available.");
+  }
+  return true;
+}
+
+function buildAgentSetupGuide(token) {
+  const baseUrl = String(window.location?.origin || "").trim() || "http://localhost:5001";
+  const safeToken = String(token || "<PASTE_AGENT_TOKEN_HERE>").trim() || "<PASTE_AGENT_TOKEN_HERE>";
+  return [
+    "# Nomad Finance OS Agent Setup",
+    "git clone https://github.com/Uacer/Nomad-Finance-OS.git",
+    "cd Nomad-Finance-OS/nomad-finance-os",
+    "",
+    `export NOMAD_API_BASE_URL=\"${baseUrl}\"`,
+    `export NOMAD_API_TOKEN=\"${safeToken}\"`,
+    "",
+    "# Parse a draft",
+    "node skills/nomad-capture-ledger/scripts/capture_client.js capture-text --message \"午饭50元\"",
+    "",
+    "# Confirm posting",
+    "node skills/nomad-capture-ledger/scripts/capture_client.js confirm --extraction-id <EXTRACTION_ID>"
+  ].join("\n");
+}
+
+async function copyAgentSetupGuide() {
+  try {
+    await copyTextToClipboard(buildAgentSetupGuide(state.latestAgentTokenPlaintext));
+    showToast(t("agentSetupCopied"));
+  } catch (error) {
+    showToast(formatErrorForToast(error), true);
+  }
+}
+
+function showAgentTokenReveal(token) {
+  const value = String(token || "").trim();
+  const revealBox = $("#agentTokenRevealValue");
+  if (revealBox instanceof HTMLTextAreaElement) {
+    revealBox.value = value;
+    revealBox.focus();
+    revealBox.setSelectionRange(0, revealBox.value.length);
+  }
+  openSheet("agentTokenRevealSheet", { preserveUtility: true });
+}
+
+async function copyLatestAgentToken() {
+  const revealBox = $("#agentTokenRevealValue");
+  const token =
+    revealBox instanceof HTMLTextAreaElement
+      ? String(revealBox.value || "")
+      : String(state.latestAgentTokenPlaintext || "");
+  if (!token.trim()) {
+    showToast(t("tokenCopyMissing"), true);
+    return;
+  }
+  try {
+    await copyTextToClipboard(token);
+    showToast(t("tokenCopied"));
+  } catch (error) {
+    showToast(formatErrorForToast(error), true);
+  }
+}
+
 async function initializeAuthFlow() {
   syncControlState();
   loadUiState();
@@ -1442,6 +1596,7 @@ function showAuthGate() {
     gate.setAttribute("aria-hidden", "false");
   }
   document.body.classList.add("auth-required");
+  renderAuthGate();
   syncDevBypassVisibility();
 }
 
@@ -1452,8 +1607,109 @@ function hideAuthGate() {
     gate.setAttribute("aria-hidden", "true");
   }
   document.body.classList.remove("auth-required");
-  const authMessage = $("#authMessage");
-  if (authMessage) authMessage.textContent = "";
+  resetAuthFormState();
+}
+
+function setAuthMessage(message, options = {}) {
+  const node = $("#authMessage");
+  if (!node) return;
+  node.textContent = String(message || "");
+  node.classList.toggle("auth-message-error", Boolean(options.error && message));
+}
+
+function renderAuthGate() {
+  const isCodeStep = state.auth.step === "code_step";
+  const emailInput = $("#authEmailInput");
+  const codeField = $("#authCodeField");
+  const codeInput = $("#authCodeInput");
+  const continueBtn = $("#authContinueBtn");
+  const resendLine = $("#authResendLine");
+  const resendText = $("#authResendText");
+  const resendBtn = $("#authResendBtn");
+
+  if (codeField) codeField.classList.toggle("hidden", !isCodeStep);
+
+  if (emailInput instanceof HTMLInputElement) {
+    if (isCodeStep && state.auth.pendingEmail) {
+      emailInput.value = String(state.auth.pendingEmail);
+    }
+    emailInput.readOnly = isCodeStep;
+  }
+
+  if (codeInput instanceof HTMLInputElement) {
+    codeInput.required = isCodeStep;
+  }
+
+  if (continueBtn instanceof HTMLButtonElement) {
+    continueBtn.textContent = t("authContinueBtn");
+    continueBtn.disabled = Boolean(state.auth.submitting);
+  }
+
+  if (resendLine) resendLine.classList.toggle("hidden", !isCodeStep);
+  if (isCodeStep) {
+    const cooldownSec = Math.max(0, Number(state.auth.resendCooldownSec || 0));
+    if (cooldownSec > 0) {
+      if (resendText) resendText.textContent = t("authResendIn", { seconds: String(cooldownSec) });
+      if (resendBtn instanceof HTMLButtonElement) {
+        resendBtn.classList.add("hidden");
+        resendBtn.disabled = true;
+      }
+    } else {
+      if (resendText) resendText.textContent = "";
+      if (resendBtn instanceof HTMLButtonElement) {
+        resendBtn.classList.remove("hidden");
+        resendBtn.disabled = Boolean(state.auth.submitting);
+      }
+    }
+  } else {
+    if (resendText) resendText.textContent = "";
+    if (resendBtn instanceof HTMLButtonElement) {
+      resendBtn.classList.add("hidden");
+      resendBtn.disabled = true;
+    }
+  }
+}
+
+function stopAuthResendCooldown(resetState = false) {
+  if (authResendTimer) {
+    clearInterval(authResendTimer);
+    authResendTimer = null;
+  }
+  if (resetState) {
+    state.auth.resendCooldownSec = 0;
+  }
+}
+
+function startAuthResendCooldown(seconds = AUTH_RESEND_COOLDOWN_SECONDS) {
+  stopAuthResendCooldown(false);
+  state.auth.resendCooldownSec = Math.max(0, Math.floor(Number(seconds) || 0));
+  renderAuthGate();
+  if (state.auth.resendCooldownSec <= 0) return;
+  authResendTimer = setInterval(() => {
+    state.auth.resendCooldownSec = Math.max(0, Number(state.auth.resendCooldownSec || 0) - 1);
+    if (state.auth.resendCooldownSec <= 0) {
+      stopAuthResendCooldown(false);
+    }
+    renderAuthGate();
+  }, 1000);
+}
+
+function resetAuthFormState() {
+  stopAuthResendCooldown(true);
+  state.auth.pendingEmail = "";
+  state.auth.step = "email_step";
+  state.auth.submitting = false;
+  const emailInput = $("#authEmailInput");
+  if (emailInput instanceof HTMLInputElement) {
+    emailInput.value = "";
+    emailInput.readOnly = false;
+  }
+  const codeInput = $("#authCodeInput");
+  if (codeInput instanceof HTMLInputElement) {
+    codeInput.value = "";
+  }
+  setAuthMessage("");
+  renderAuthGate();
 }
 
 function syncDevBypassVisibility() {
@@ -1467,39 +1723,121 @@ function syncDevBypassVisibility() {
   }
 }
 
-async function submitMagicLinkRequestForm(event) {
+function buildAuthRequestError(response, payload) {
+  const detail =
+    typeof payload?.error === "string"
+      ? payload.error
+      : payload?.error
+        ? JSON.stringify(payload.error)
+        : `${response.status} ${response.statusText}`;
+  const error = new Error(detail);
+  error.status = response.status;
+  return error;
+}
+
+function resolveAuthErrorMessage(error, phase) {
+  const status = Number(error?.status || 0);
+  if (status === 429) return t("authTooMany");
+  if (status === 502) return t("authEmailFailed");
+  if (phase === "verify" && status === 400) return t("authCodeInvalid");
+  if (phase === "request") return t("authRequestFailed");
+  if (phase === "verify") return t("authVerifyFailed");
+  return String(error?.message || t("authVerifyFailed"));
+}
+
+async function requestAuthCode(email, options = {}) {
+  const asResend = Boolean(options.asResend);
+  const response = await fetch("/api/v1/auth/code/request", {
+    method: "POST",
+    credentials: "same-origin",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ email })
+  });
+  const payload = await safeJson(response);
+  if (!response.ok) {
+    throw buildAuthRequestError(response, payload);
+  }
+  state.auth.pendingEmail = String(email || "").trim();
+  state.auth.step = "code_step";
+  startAuthResendCooldown();
+  setAuthMessage(t("authCodeSentTo", { email: state.auth.pendingEmail }));
+  renderAuthGate();
+  const codeInput = $("#authCodeInput");
+  if (codeInput instanceof HTMLInputElement) codeInput.focus();
+  showToast(asResend ? t("authResendSent") : t("authSent"));
+}
+
+async function submitAuthGateForm(event) {
   event.preventDefault();
   const form = event.currentTarget;
   if (!(form instanceof HTMLFormElement)) return;
-  const button = $("#authRequestBtn");
-  const authMessage = $("#authMessage");
+  if (state.auth.submitting) return;
   const fd = new FormData(form);
   const email = String(fd.get("email") || "").trim();
+  const isCodeStep = state.auth.step === "code_step";
+  const code = String(fd.get("code") || "")
+    .trim()
+    .replace(/\s+/g, "");
+
   if (!email) return;
-  if (button instanceof HTMLButtonElement) button.disabled = true;
+  if (isCodeStep && !code) return;
+
+  state.auth.submitting = true;
+  setAuthMessage("");
+  renderAuthGate();
   try {
-    const response = await fetch("/api/v1/auth/magic-link/request", {
+    if (!isCodeStep) {
+      await requestAuthCode(email, { asResend: false });
+      return;
+    }
+
+    const verifyRes = await fetch("/api/v1/auth/code/verify", {
       method: "POST",
       credentials: "same-origin",
       headers: { "content-type": "application/json" },
-      body: JSON.stringify({ email })
+      body: JSON.stringify({ email: state.auth.pendingEmail || email, code })
     });
-    const payload = await safeJson(response);
-    if (!response.ok) {
-      const detail =
-        typeof payload?.error === "string"
-          ? payload.error
-          : payload?.error
-            ? JSON.stringify(payload.error)
-            : `${response.status} ${response.statusText}`;
-      throw new Error(detail);
+    const verifyPayload = await safeJson(verifyRes);
+    if (!verifyRes.ok) {
+      throw buildAuthRequestError(verifyRes, verifyPayload);
     }
-    if (authMessage) authMessage.textContent = t("authSent");
-    showToast(t("authSent"));
+    setAuthMessage("");
+    await loadAuthSession();
+    if (!state.auth.authenticated) {
+      throw new Error(t("authVerifyFailed"));
+    }
+    hideAuthGate();
+    showToast(t("authSignedIn"));
+    await loadAll();
   } catch (error) {
-    showToast(String(error?.message || "Failed to request magic link."), true);
+    const message = resolveAuthErrorMessage(error, isCodeStep ? "verify" : "request");
+    setAuthMessage(message, { error: true });
+    showToast(message, true);
   } finally {
-    if (button instanceof HTMLButtonElement) button.disabled = false;
+    state.auth.submitting = false;
+    renderAuthGate();
+  }
+}
+
+async function resendAuthCode() {
+  if (state.auth.step !== "code_step") return;
+  if (state.auth.submitting) return;
+  if (Number(state.auth.resendCooldownSec || 0) > 0) return;
+  const email = String(state.auth.pendingEmail || "").trim();
+  if (!email) return;
+
+  state.auth.submitting = true;
+  setAuthMessage("");
+  renderAuthGate();
+  try {
+    await requestAuthCode(email, { asResend: true });
+  } catch (error) {
+    const message = resolveAuthErrorMessage(error, "request");
+    setAuthMessage(message, { error: true });
+    showToast(message, true);
+  } finally {
+    state.auth.submitting = false;
+    renderAuthGate();
   }
 }
 
@@ -1515,9 +1853,14 @@ async function logoutCurrentSession() {
   state.auth.authenticated = false;
   state.auth.user = null;
   state.auth.devBypass = false;
+  state.auth.pendingEmail = "";
+  state.auth.step = "email_step";
+  state.auth.submitting = false;
+  stopAuthResendCooldown(true);
   closeSheet("settingsSheet");
   closeAllSheets();
   closeUtilityPanel();
+  setAuthMessage("");
   showAuthGate();
 }
 
@@ -2845,10 +3188,7 @@ async function submitAgentTokenForm(event) {
       body: JSON.stringify({ name })
     });
     state.latestAgentTokenPlaintext = String(created?.token || "");
-    const tokenField = $("#agentTokenPlaintext");
-    if (tokenField instanceof HTMLTextAreaElement) {
-      tokenField.value = state.latestAgentTokenPlaintext;
-    }
+    showAgentTokenReveal(state.latestAgentTokenPlaintext);
     showToast(t("agentTokenCreated"));
     form.reset();
     await loadAgentTokens();
@@ -3172,7 +3512,9 @@ function renderPlannedBudgetCard(dashboard) {
   if (!summary || !list || !pieView || !toggleBtn) return;
 
   const showPie = Boolean(state.ui.budgetPieView);
-  toggleBtn.textContent = showPie ? "≣" : "◔";
+  toggleBtn.innerHTML = showPie
+    ? `<svg width="15" height="15" viewBox="0 0 15 15" fill="none" aria-hidden="true"><rect x="2" y="3.5" width="11" height="1.6" rx="0.8" fill="currentColor"/><rect x="2" y="6.7" width="11" height="1.6" rx="0.8" fill="currentColor"/><rect x="2" y="9.9" width="11" height="1.6" rx="0.8" fill="currentColor"/></svg>`
+    : `<svg width="15" height="15" viewBox="0 0 15 15" fill="none" aria-hidden="true"><path d="M7.5 1.5v6h6a6 6 0 1 1-6-6Z" fill="currentColor" opacity="0.45"/><path d="M7.5 1.5a6 6 0 0 1 6 6h-6V1.5Z" fill="currentColor"/></svg>`;
   const toggleLabel = showPie ? t("budgetViewToggleToList") : t("budgetViewToggleToPie");
   toggleBtn.setAttribute("aria-label", toggleLabel);
   toggleBtn.setAttribute("title", toggleLabel);
@@ -3206,16 +3548,18 @@ function renderPlannedBudgetCard(dashboard) {
         return `
           <article class="budget-plan-row">
             <div class="top">
-              <div class="budget-plan-name">
+              <span class="budget-plan-name">
                 <strong>${escapeHtml(withL1Emoji(row.category_l1))}</strong>
-                <span class="budget-plan-period muted">/ ${escapeHtml(periodLabel)}</span>
-              </div>
-              <span class="${row.overspend ? "overspend" : ratio >= 0.8 ? "warn" : "muted"}">
-                ${formatMoney(used)} / ${formatMoney(total)}
-                <span class="${remainClass}"> · ${escapeHtml(t("remaining"))}: ${remainText}</span>
+              </span>
+              <span class="budget-plan-amounts ${row.overspend ? "overspend" : ratio >= 0.8 ? "warn" : "muted"}">
+                ${formatMoney(used)}<span class="budget-plan-total"> / ${formatMoney(total)}</span>
               </span>
             </div>
             <div class="progress-wrap"><div class="progress-fill ${tone}" style="width:${pct}%"></div></div>
+            <div class="budget-plan-meta">
+              <span class="muted">${escapeHtml(periodLabel)}</span>
+              <span class="${remainClass}">${remaining >= 0 ? escapeHtml(t("remaining")) + ": " + remainText : "−" + formatMoney(Math.abs(remaining))}</span>
+            </div>
           </article>
         `;
       })
@@ -3450,11 +3794,18 @@ function populateTransactionDetailSheet(tx) {
   const sourceCurrency = String(tx.currency_original || baseCurrency).toUpperCase();
   const originalAmount = getSignedTransactionAmount(tx, "amount_original");
   const baseAmount = getSignedTransactionAmount(tx, "amount_base");
-  setText("transactionDetailAmountValue", `${formatSignedMoney(originalAmount)} ${sourceCurrency}`);
-  setText(
-    "transactionDetailAmountSub",
-    sourceCurrency === baseCurrency ? "" : `${formatSignedMoney(baseAmount)} ${baseCurrency}`
-  );
+  const hero = document.getElementById("txdHero");
+  if (hero) {
+    hero.dataset.type = tx.type || "expense";
+  }
+  const amountEl = document.getElementById("transactionDetailAmountValue");
+  if (amountEl) {
+    amountEl.innerHTML = `${escapeHtml(formatSignedMoney(originalAmount))}<span class="txd-amount-currency">${escapeHtml(sourceCurrency)}</span>`;
+  }
+  const subEl = document.getElementById("transactionDetailAmountSub");
+  if (subEl) {
+    subEl.textContent = sourceCurrency === baseCurrency ? "" : `${formatSignedMoney(baseAmount)} ${baseCurrency}`;
+  }
   setText("transactionDetailCategoryValue", formatTransactionDetailCategory(tx));
   setText("transactionDetailAccountValue", formatTransactionDetailAccount(tx));
   const detailTime = formatTransactionDetailTime(tx);
@@ -3645,7 +3996,9 @@ async function deleteTransactionById(txId, options = {}) {
 function renderAgentTokens() {
   const target = $("#agentTokenList");
   if (!target) return;
-  const rows = Array.isArray(state.agentTokens) ? state.agentTokens : [];
+  const rows = (Array.isArray(state.agentTokens) ? state.agentTokens : []).filter(
+    (row) => row && !row.revoked
+  );
   if (!rows.length) {
     target.innerHTML = `<div class="list-row muted">${escapeHtml(t("tokenListEmpty"))}</div>`;
     return;
@@ -3653,21 +4006,19 @@ function renderAgentTokens() {
   target.innerHTML = rows
     .map((row) => {
       const scopes = Array.isArray(row.scopes) ? row.scopes.join(", ") : "";
-      const statusLabel = row.revoked ? t("tokenStatusRevoked") : t("tokenStatusActive");
       const lastUsed = row.last_used_at ? formatTimestampValue(row.last_used_at) : t("tokenNeverUsed");
-      const revokeBtn = row.revoked
-        ? ""
-        : `<button class="btn" data-action="revoke" data-id="${row.id}">${escapeHtml(t("revokeToken"))}</button>`;
       return `
         <article class="list-row">
           <div class="row-main">
             <strong>${escapeHtml(row.name || "")}</strong>
-            <span class="pill">${escapeHtml(statusLabel)}</span>
+            <span class="pill">${escapeHtml(t("tokenStatusActive"))}</span>
           </div>
           <div class="muted mono">${escapeHtml(row.token_masked || row.token_prefix || "")}</div>
           <div class="muted">${escapeHtml(t("tokenScopes"))}: ${escapeHtml(scopes || "-")}</div>
           <div class="muted">${escapeHtml(t("tokenLastUsed"))}: ${escapeHtml(lastUsed)}</div>
-          <div class="tag-wrap">${revokeBtn}</div>
+          <div class="tag-wrap">
+            <button class="btn" data-action="revoke" data-id="${row.id}">${escapeHtml(t("revokeToken"))}</button>
+          </div>
         </article>
       `;
     })
@@ -3689,6 +4040,7 @@ async function loadTransactionsWithOptions(options = {}) {
   state.transactions = Array.isArray(rows) ? rows : [];
   if (!expenseOnly) {
     renderRecentExpensesCard(state.transactions);
+    renderTodayExpensesCard(state.transactions);
   }
   renderTransactionList(state.transactions, { expenseOnly });
   return state.transactions;
@@ -3708,43 +4060,102 @@ function renderTransactionList(rows, options = {}) {
   target.innerHTML = visibleRows
     .map((row) => {
       const sourceCurrency = String(row.currency_original || baseCurrency).toUpperCase();
-      const effectiveRate =
-        Number(row.effective_fx_rate || row.fx_rate || 1) > 0
-          ? Number(row.effective_fx_rate || row.fx_rate || 1)
-          : 1;
-      const fxLine =
-        sourceCurrency !== baseCurrency
-          ? `<div class="muted mono">FX: ${escapeHtml(sourceCurrency)} → ${escapeHtml(
-              baseCurrency
-            )} = ${effectiveRate.toFixed(6)}</div>`
-          : "";
-      const tags =
-        row.tags && row.tags.length
-          ? `<div class="tag-wrap">${row.tags
-              .map((tag) => `<span class="pill">${escapeHtml(tag)}</span>`)
-              .join("")}</div>`
-          : "";
+      const showOrig = sourceCurrency !== baseCurrency;
+      const isExpense = row.type === "expense";
+      const isIncome = row.type === "income";
+      const isTransfer = row.type === "transfer";
+
+      // title line
+      let title = "";
+      if (isExpense) title = formatCategoryPair(row.category_l1, row.category_l2) || txTypeLabel(row.type);
+      else if (isIncome) title = `${txTypeLabel("income")}`;
+      else {
+        const reason = row.transfer_reason && row.transfer_reason !== "normal"
+          ? ` · ${getTransferReasonLabel(row.transfer_reason)}` : "";
+        title = `${txTypeLabel("transfer")}${reason}`;
+      }
+
+      // account line
+      let accountLine = "";
+      if (isExpense && row.account_from_id) accountLine = escapeHtml(row.account_from_id);
+      else if (isIncome && row.account_to_id) accountLine = escapeHtml(row.account_to_id);
+      else if (isTransfer) {
+        const from = row.account_from_id || "–";
+        const to = row.account_to_id || "–";
+        accountLine = `${escapeHtml(from)} → ${escapeHtml(to)}`;
+      }
+
+      const amountClass = isExpense ? "tx-amount expense" : isIncome ? "tx-amount income" : "tx-amount transfer";
+      const signedBase = isExpense ? -Math.abs(Number(row.amount_base)) : isIncome ? Math.abs(Number(row.amount_base)) : Number(row.amount_base);
+      const signedOrig = isExpense ? -Math.abs(Number(row.amount_original)) : isIncome ? Math.abs(Number(row.amount_original)) : Number(row.amount_original);
+
+      const tags = row.tags && row.tags.length
+        ? `<div class="tx-tags">${row.tags.map((tag) => `<span class="pill">${escapeHtml(tag)}</span>`).join("")}</div>`
+        : "";
+
       return `
-        <article class="list-row clickable" data-tx-id="${row.id}">
-          <div class="row-main">
-            <strong>${txTypeLabel(row.type)} · ${formatMoney(row.amount_base)} ${
-        baseCurrency
-      }</strong>
-            <span class="muted">${row.tx_date}</span>
+        <article class="list-row tx-row clickable" data-tx-id="${row.id}">
+          <div class="tx-row-main">
+            <span class="tx-row-title">${escapeHtml(title)}</span>
+            <span class="${amountClass}">${escapeHtml(formatMoney(signedBase))}<span class="tx-unit">${escapeHtml(baseCurrency)}</span></span>
           </div>
-          <div class="muted">${escapeHtml(t("original"))}: ${formatMoney(row.amount_original)} ${escapeHtml(
-        row.currency_original
-      )}</div>
-          ${fxLine}
-          <div class="muted">${formatCategoryPair(row.category_l1, row.category_l2)} · ${escapeHtml(
-            t("reason")
-          )}: ${escapeHtml(getTransferReasonLabel(row.transfer_reason || "normal"))}</div>
-          <div class="muted mono">${escapeHtml(t("from"))}: ${row.account_from_id || "-"} · ${escapeHtml(t("to"))}: ${row.account_to_id || "-"}</div>
-          <div>${escapeHtml(row.note || "")}</div>
+          <div class="tx-row-sub">
+            <span class="tx-row-meta">${accountLine ? `${accountLine} · ` : ""}${escapeHtml(row.tx_date)}</span>
+            ${showOrig ? `<span class="tx-orig">${escapeHtml(formatMoney(signedOrig))} ${escapeHtml(sourceCurrency)}</span>` : ""}
+          </div>
+          ${row.note ? `<div class="tx-note">${escapeHtml(row.note)}</div>` : ""}
           ${tags}
         </article>`;
     })
     .join("");
+}
+
+function renderTodayExpensesCard(rows) {
+  const listEl = document.querySelector('#todayExpensesList');
+  const totalEl = document.querySelector('#todayExpensesTotal');
+  if (!listEl || !totalEl) return;
+  const today = new Date().toISOString().slice(0, 10);
+  const base = state.settings?.base_currency || 'USD';
+  // All today's transactions (not just expenses)
+  const todayRows = (Array.isArray(rows) ? rows : []).filter((r) => r.tx_date === today);
+  // Total = sum of expense amounts (absolute)
+  const total = todayRows.reduce((s, r) => s + (r.type === 'expense' ? (Number(r.amount_base) || 0) : 0), 0);
+  totalEl.innerHTML = todayRows.length
+    ? `${escapeHtml(formatMoney(total))}<span class="today-total-unit">${escapeHtml(base)}</span>`
+    : '';
+  if (!todayRows.length) {
+    listEl.innerHTML = '<div class="incard-empty muted">No transactions today</div>';
+    return;
+  }
+  listEl.innerHTML = todayRows.map((row) => {
+    // Title: L2 only for expense, type label for income/transfer
+    let title = '';
+    if (row.type === 'expense') {
+      title = row.category_l2 ? withL2Emoji(row.category_l2, row.category_l1) : (row.category_l1 ? withL1Emoji(row.category_l1) : txTypeLabel('expense'));
+    } else if (row.type === 'income') {
+      title = txTypeLabel('income');
+    } else {
+      const reason = row.transfer_reason && row.transfer_reason !== 'normal' ? ` · ${getTransferReasonLabel(row.transfer_reason)}` : '';
+      title = txTypeLabel('transfer') + reason;
+    }
+    const showOrig = row.currency_original && row.currency_original.toUpperCase() !== base.toUpperCase();
+    // Absolute amounts — color conveys direction, no minus sign needed
+    const baseAmt = Math.abs(Number(row.amount_base));
+    const origAmt = Math.abs(Number(row.amount_original));
+    const amtClass = row.type === 'income' ? 'tx-amount income' : row.type === 'transfer' ? 'tx-amount transfer' : 'tx-amount expense';
+    return `
+      <article class="incard-row clickable" data-tx-id="${row.id}">
+        <div class="tx-row-main">
+          <span class="tx-row-title">${escapeHtml(title)}</span>
+          <span class="${amtClass}">${escapeHtml(formatMoney(baseAmt))}<span class="tx-unit">${escapeHtml(base)}</span></span>
+        </div>
+        <div class="tx-row-sub">
+          <span class="tx-row-meta">${escapeHtml(row.tx_date)}</span>
+          ${showOrig ? `<span class="tx-orig">${escapeHtml(formatMoney(origAmt))} ${escapeHtml(row.currency_original)}</span>` : ''}
+        </div>
+        ${row.note ? `<div class="tx-note">${escapeHtml(row.note)}</div>` : ''}
+      </article>`;
+  }).join('');
 }
 
 function renderRecentExpensesCard(rows) {
@@ -3752,25 +4163,33 @@ function renderRecentExpensesCard(rows) {
   if (!target) return;
   const txRows = (Array.isArray(rows) ? rows : []).slice(0, 5);
   if (!txRows.length) {
-    target.innerHTML = `<div class="list-row muted">${escapeHtml(t("emptyNoRecentExpense"))}</div>`;
+    target.innerHTML = `<div class="incard-empty muted">${escapeHtml(t("emptyNoRecentExpense"))}</div>`;
     return;
   }
   const base = state.settings?.base_currency || "USD";
   target.innerHTML = txRows
     .map((row) => {
-      const context = formatRecentTransactionContext(row);
+      const isExpense = row.type === "expense";
+      const isIncome = row.type === "income";
+      const title = formatRecentTransactionTitle(row);
+      const showOrig = row.currency_original && row.currency_original.toUpperCase() !== base.toUpperCase();
+      const signedBase = isExpense ? -Math.abs(Number(row.amount_base)) : isIncome ? Math.abs(Number(row.amount_base)) : Number(row.amount_base);
+      const signedOrig = isExpense ? -Math.abs(Number(row.amount_original)) : isIncome ? Math.abs(Number(row.amount_original)) : Number(row.amount_original);
+      const amountClass = isExpense ? "tx-amount expense" : isIncome ? "tx-amount income" : "tx-amount transfer";
+      const dateLabel = formatRecentExpenseDate(row.tx_date);
+      const account = isExpense ? row.account_from_id : isIncome ? row.account_to_id : null;
+      const meta = [account, dateLabel].filter(Boolean).join(" · ");
       return `
-      <article class="list-row recent-expense-row clickable" data-tx-id="${row.id}">
-        <div class="row-main">
-          <strong>${escapeHtml(formatRecentTransactionTitle(row))}</strong>
-          <span class="mono">${formatMoney(row.amount_base)} ${escapeHtml(base)}</span>
+      <article class="incard-row clickable" data-tx-id="${row.id}">
+        <div class="tx-row-main">
+          <span class="tx-row-title">${escapeHtml(title)}</span>
+          <span class="${amountClass}">${escapeHtml(formatMoney(signedBase))}<span class="tx-unit">${escapeHtml(base)}</span></span>
         </div>
-        <div class="row-main">
-          <span class="muted">${escapeHtml(formatRecentExpenseDate(row.tx_date))}</span>
-          <span class="muted">${formatMoney(row.amount_original)} ${escapeHtml(row.currency_original || "-")}</span>
+        <div class="tx-row-sub">
+          <span class="tx-row-meta">${escapeHtml(meta)}</span>
+          ${showOrig ? `<span class="tx-orig">${escapeHtml(formatMoney(signedOrig))} ${escapeHtml(row.currency_original)}</span>` : ""}
         </div>
-        ${context ? `<div class="muted mono">${escapeHtml(context)}</div>` : ""}
-        <div>${escapeHtml(row.note || "")}</div>
+        ${row.note ? `<div class="tx-note">${escapeHtml(row.note)}</div>` : ""}
       </article>`;
     })
     .join("");
@@ -4058,8 +4477,11 @@ function applyI18n() {
   setText("authTitle", t("authTitle"));
   setText("authSubtitle", t("authSubtitle"));
   setText("authEmailLabel", t("authEmailLabel"));
-  setText("authRequestBtn", t("authSendBtn"));
+  setText("authContinueBtn", t("authContinueBtn"));
+  setText("authCodeLabel", t("authCodeLabel"));
+  setText("authResendBtn", t("authResendBtn"));
   setText("authHint", t("authHint"));
+  renderAuthGate();
   setText("subtitleText", t("subtitle"));
   setText("monthLabelText", t("month"));
   setText("dashboardTitle", t("dashboard"));
@@ -4156,7 +4578,12 @@ function applyI18n() {
   setText("agentTokenHint", t("agentTokensHint"));
   setText("agentTokenNameLabel", t("agentTokenName"));
   setText("agentTokenCreateBtn", t("createAgentToken"));
-  setText("agentTokenLatestLabel", t("latestAgentToken"));
+  setText("agentQuickstartTitle", t("agentQuickstartTitle"));
+  setText("agentQuickstartHint", t("agentQuickstartHint"));
+  setText("agentQuickstartCopyBtn", t("copyAgentSetup"));
+  setText("agentTokenRevealTitle", t("agentTokenRevealTitle"));
+  setText("agentTokenRevealHint", t("agentTokenRevealHint"));
+  setText("agentTokenRevealCopyBtn", t("copyToken"));
   setText("accountEditTitle", t("editAccount"));
   setText("accountEditNameLabel", t("account"));
   setText("accountEditTypeLabel", t("accountType"));
@@ -4193,10 +4620,12 @@ function applyI18n() {
   if (quickNote) {
     quickNote.placeholder = ensureUILanguage(state.settings?.ui_language) === "zh" ? "可选" : "optional";
   }
-  const latestTokenBox = $("#agentTokenPlaintext");
-  if (latestTokenBox instanceof HTMLTextAreaElement) {
-    latestTokenBox.placeholder =
-      ensureUILanguage(state.settings?.ui_language) === "zh" ? "创建后会显示在这里" : "Will appear after creation";
+  const tokenRevealBox = $("#agentTokenRevealValue");
+  if (tokenRevealBox instanceof HTMLTextAreaElement) {
+    tokenRevealBox.placeholder =
+      ensureUILanguage(state.settings?.ui_language) === "zh"
+        ? "创建后会显示在弹窗里"
+        : "Token plaintext will appear here";
   }
   if ((state.accounts || []).length) {
     populateQuickEntryAccounts();
@@ -4230,6 +4659,7 @@ function applyI18n() {
     debugFilterInput.placeholder = t("debugFilterPlaceholder");
   }
   renderRecentExpensesCard(state.transactions || []);
+  renderTodayExpensesCard(state.transactions || []);
   renderAgentTokens();
   renderDebugPanel();
 }
@@ -4372,3 +4802,207 @@ function txTypeLabel(type) {
   if (type === "transfer") return t("txTypeTransfer");
   return String(type || "").toUpperCase();
 }
+
+// ── Dashboard drag-to-reorder ──────────────────────────────────────────────
+const DASH_ORDER_KEY = "nomad-dash-order";
+
+function applyDashboardOrder() {
+  const container = document.getElementById("dashboardSortable");
+  if (!container) return;
+  let order;
+  try { order = JSON.parse(localStorage.getItem(DASH_ORDER_KEY) || "[]"); } catch { order = []; }
+  if (!Array.isArray(order) || !order.length) return;
+  for (const id of order) {
+    const el = container.querySelector(`[data-sort-id="${id}"]`);
+    if (el) container.appendChild(el);
+  }
+}
+
+function saveDashboardOrder() {
+  const container = document.getElementById("dashboardSortable");
+  if (!container) return;
+  const ids = [...container.children]
+    .filter(c => !c.classList.contains("drag-placeholder"))
+    .map(c => c.dataset.sortId).filter(Boolean);
+  try { localStorage.setItem(DASH_ORDER_KEY, JSON.stringify(ids)); } catch {}
+}
+
+function initDashboardDrag() {
+  const container = document.getElementById("dashboardSortable");
+  if (!container) return;
+  applyDashboardOrder();
+
+  // State
+  let dragEl = null;         // the card being dragged
+  let placeholder = null;   // ghost element holding the card's space
+  let longPressTimer = null;
+  let pressTimer = null;    // 80ms visual "lift" feedback timer
+  let pressEl = null;       // card being held before drag confirms
+  let dragOffsetY = 0;       // finger Y relative to card top
+  let active = false;
+  let currentTouchY = 0;   // live finger Y (updated even before drag starts)
+
+  // ── Helpers ──
+  function snapshots() {
+    // Capture {el, midY} for all non-drag, non-placeholder children (live rects)
+    return [...container.children]
+      .filter(c => c !== dragEl && !c.classList.contains("drag-placeholder"))
+      .map(c => ({ el: c, midY: c.getBoundingClientRect().top + c.getBoundingClientRect().height / 2 }));
+  }
+
+  function movePlaceholder(clientY) {
+    const snaps = snapshots();
+    let insertBefore = null;
+    for (const s of snaps) {
+      if (clientY < s.midY) { insertBefore = s.el; break; }
+    }
+    if (insertBefore) container.insertBefore(placeholder, insertBefore);
+    else container.appendChild(placeholder);
+    // Keep dragEl floating via transform
+    const contRect = container.getBoundingClientRect();
+    dragEl.style.transform = `translateY(${clientY - contRect.top - dragOffsetY}px)`;
+  }
+
+  function startDrag(card, clientY) {
+    active = true;
+    dragEl = card;
+    // Lock selection globally so no text gets highlighted during drag
+    document.body.style.webkitUserSelect = "none";
+    document.body.style.userSelect = "none";
+    const rect = card.getBoundingClientRect();
+    dragOffsetY = clientY - rect.top;
+
+    // Create placeholder matching card height
+    placeholder = document.createElement("div");
+    placeholder.className = "drag-placeholder";
+    placeholder.style.height = rect.height + "px";
+    // Insert placeholder in card's current position, then pull card out of flow
+    container.insertBefore(placeholder, card);
+    card.style.position = "absolute";
+    card.style.top = "0";
+    card.style.left = "0";
+    card.style.width = rect.width + "px";
+    card.style.zIndex = "200";
+    card.style.pointerEvents = "none";
+    card.classList.add("is-dragging");
+    container.style.position = "relative";
+    container.classList.add("sort-active");
+    if (navigator.vibrate) navigator.vibrate(38);
+    movePlaceholder(clientY);
+  }
+
+  function unlockSelection() {
+    document.body.style.webkitUserSelect = "";
+    document.body.style.userSelect = "";
+  }
+
+  function clearPressState() {
+    if (pressTimer) { clearTimeout(pressTimer); pressTimer = null; }
+    if (pressEl) { pressEl.classList.remove("press-ready"); pressEl = null; }
+  }
+
+  function endDrag() {
+    if (!active) return;
+    active = false;
+    unlockSelection();
+    // Place real card where placeholder is
+    container.insertBefore(dragEl, placeholder);
+    placeholder.remove();
+    placeholder = null;
+    // Reset styles
+    dragEl.style.cssText = "";
+    dragEl.classList.remove("is-dragging");
+    container.style.position = "";
+    container.classList.remove("sort-active");
+    dragEl = null;
+    saveDashboardOrder();
+  }
+
+  function cancelDrag() {
+    if (!active) return;
+    active = false;
+    unlockSelection();
+    placeholder && placeholder.remove();
+    placeholder = null;
+    if (dragEl) {
+      dragEl.style.cssText = "";
+      dragEl.classList.remove("is-dragging");
+    }
+    dragEl = null;
+    container.style.position = "";
+    container.classList.remove("sort-active");
+  }
+
+  // ── Touch events ──
+  container.addEventListener("touchstart", (e) => {
+    const card = e.target.closest("[data-sort-id]");
+    if (!card) return;
+    document.body.style.webkitUserSelect = "none";
+    document.body.style.userSelect = "none";
+    pressEl = card;
+    currentTouchY = e.touches[0].clientY;
+
+    // 80ms: show subtle "lift" so user knows long-press is registered
+    pressTimer = setTimeout(() => card.classList.add("press-ready"), 80);
+
+    // 500ms: activate drag using current (live) finger position
+    longPressTimer = setTimeout(() => {
+      clearPressState();
+      startDrag(card, currentTouchY);
+    }, 500);
+  }, { passive: false });
+
+  window.addEventListener("touchmove", (e) => {
+    currentTouchY = e.touches[0].clientY;
+    if (longPressTimer) {
+      // Finger moved — cancel long press and restore
+      clearTimeout(longPressTimer); longPressTimer = null;
+      clearPressState();
+      unlockSelection();
+    }
+    if (!active) return;
+    e.preventDefault();
+    movePlaceholder(e.touches[0].clientY);
+  }, { passive: false });
+
+  window.addEventListener("touchend", () => {
+    if (longPressTimer) { clearTimeout(longPressTimer); longPressTimer = null; }
+    clearPressState();
+    if (active) endDrag(); else unlockSelection();
+  });
+
+  window.addEventListener("touchcancel", () => {
+    if (longPressTimer) { clearTimeout(longPressTimer); longPressTimer = null; }
+    clearPressState();
+    unlockSelection();
+    cancelDrag();
+  });
+
+  // ── Mouse events (desktop long-press via mousedown hold) ──
+  container.addEventListener("mousedown", (e) => {
+    const card = e.target.closest("[data-sort-id]");
+    if (!card) return;
+    // Ignore clicks on interactive children
+    if (e.target.closest("button,input,select,a,textarea")) return;
+    const clientY = e.clientY;
+    longPressTimer = setTimeout(() => {
+      e.preventDefault();
+      startDrag(card, clientY);
+    }, 500);
+  });
+
+  window.addEventListener("mousemove", (e) => {
+    if (longPressTimer && Math.abs(e.movementY) > 4) {
+      clearTimeout(longPressTimer); longPressTimer = null;
+    }
+    if (!active) return;
+    movePlaceholder(e.clientY);
+  });
+
+  window.addEventListener("mouseup", () => {
+    if (longPressTimer) { clearTimeout(longPressTimer); longPressTimer = null; }
+    if (active) endDrag();
+  });
+}
+
+document.addEventListener("DOMContentLoaded", initDashboardDrag);
