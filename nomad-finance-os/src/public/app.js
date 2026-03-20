@@ -26,8 +26,6 @@ const state = {
     submitting: false,
     resendCooldownSec: 0
   },
-  latestExtractionId: null,
-  latestExtractionDraft: null,
   latestAgentTokenPlaintext: "",
   trend: {
     start: "",
@@ -688,9 +686,6 @@ function bindUI() {
       void copyAgentSetupGuide();
     });
   }
-  $("#captureTextForm").addEventListener("submit", submitCaptureTextForm);
-  $("#captureImageForm").addEventListener("submit", submitCaptureImageForm);
-  $("#confirmExtractionBtn").addEventListener("click", confirmLatestExtraction);
   $("#generateReviewBtn").addEventListener("click", generateMonthlyReview);
   $("#transactionForm [name=type]").addEventListener("change", handleTxTypeChange);
   $("#transactionForm [name=transfer_reason]").addEventListener("change", handleTxTypeChange);
@@ -1572,38 +1567,24 @@ async function copyTextToClipboard(text) {
   return true;
 }
 
-function buildAgentSetupGuide(token) {
-  const baseUrl = String(window.location?.origin || "").trim() || "http://localhost:5001";
-  const safeToken = String(token || "<PASTE_AGENT_TOKEN_HERE>").trim() || "<PASTE_AGENT_TOKEN_HERE>";
-  const rawBase = "https://raw.githubusercontent.com/Uacer/Nomad-Finance-OS/main/skills/nomad-capture-ledger";
-  const skillDir = "~/.claude/skills/nomad-capture-ledger";
+function buildAgentSetupGuide() {
+  const skillFolderUrl =
+    "https://github.com/Uacer/Nomad-Finance-OS/tree/main/skills/nomad-capture-ledger";
 
   return [
     "# Nomad Finance OS — Ledger Agent Setup Brief",
     "",
-    "Please set up the nomad-capture-ledger skill for me and confirm when ready.",
+    "Please install the `nomad-capture-ledger` skill from this folder URL (include all files) and confirm when ready:",
     "",
-    "## 1. Install skill",
+    skillFolderUrl,
     "",
-    "```sh",
-    `mkdir -p ${skillDir}`,
-    `curl -fsSL "${rawBase}/SKILL.md" -o ${skillDir}/SKILL.md`,
-    "```",
-    "",
-    "## 2. Set credentials",
-    "",
-    "```sh",
-    `export NOMAD_API_BASE_URL="${baseUrl}"`,
-    `export NOMAD_API_TOKEN="${safeToken}"`,
-    "```",
-    "",
-    "Once set up, use the `nomad-capture-ledger` skill whenever I mention a transaction."
+    "Once installed, use the `nomad-capture-ledger` skill whenever I mention a transaction."
   ].join("\n");
 }
 
 async function copyAgentSetupGuide() {
   try {
-    await copyTextToClipboard(buildAgentSetupGuide(state.latestAgentTokenPlaintext));
+    await copyTextToClipboard(buildAgentSetupGuide());
     showToast(t("agentSetupCopied"));
   } catch (error) {
     showToast(formatErrorForToast(error), true);
@@ -3327,72 +3308,6 @@ async function submitAgentTokenForm(event) {
     showToast(t("agentTokenCreated"));
     form.reset();
     await loadAgentTokens();
-  } catch (error) {
-    showErrorToast(error);
-  }
-}
-
-async function submitCaptureTextForm(event) {
-  event.preventDefault();
-  const form = event.currentTarget;
-  if (!(form instanceof HTMLFormElement)) return;
-  const fd = new FormData(form);
-  try {
-    const payload = await api("/api/v1/transactions/parse-text", {
-      method: "POST",
-      body: JSON.stringify({ text: fd.get("text") })
-    });
-    setLatestExtraction(payload);
-    showToast("Parsed with AI agent");
-  } catch (error) {
-    showErrorToast(error);
-  }
-}
-
-async function submitCaptureImageForm(event) {
-  event.preventDefault();
-  const form = event.currentTarget;
-  if (!(form instanceof HTMLFormElement)) return;
-  const fd = new FormData(form);
-  try {
-    const payload = await api("/api/v1/transactions/parse-image", {
-      method: "POST",
-      body: JSON.stringify({
-        ocr_text: fd.get("ocr_text"),
-        image_base64: fd.get("image_base64")
-      })
-    });
-    setLatestExtraction(payload);
-    showToast("OCR parsed with AI agent");
-  } catch (error) {
-    showErrorToast(error);
-  }
-}
-
-function setLatestExtraction(payload) {
-  state.latestExtractionId = payload.extraction_id;
-  state.latestExtractionDraft = payload.draft;
-  $("#extractionPreview").textContent = JSON.stringify(payload, null, 2);
-}
-
-async function confirmLatestExtraction() {
-  if (!state.latestExtractionId) {
-    showToast("No extraction to confirm", true);
-    return;
-  }
-  try {
-    await api("/api/v1/transactions/confirm-extraction", {
-      method: "POST",
-      body: JSON.stringify({
-        extraction_id: state.latestExtractionId,
-        overrides: state.latestExtractionDraft || {}
-      })
-    });
-    showToast("Extraction confirmed");
-    state.latestExtractionId = null;
-    state.latestExtractionDraft = null;
-    $("#extractionPreview").textContent = "";
-    await refreshAfterLedgerChange();
   } catch (error) {
     showErrorToast(error);
   }

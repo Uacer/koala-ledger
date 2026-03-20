@@ -10,9 +10,6 @@ services:
       - PORT=5001
       - DB_PATH=/data/nomad-finance.db
       - BACKUP_DIR=/backups
-      - NOMAD_AGENT_API_KEY=${NOMAD_AGENT_API_KEY:-}
-      - NOMAD_AGENT_BASE_URL=${NOMAD_AGENT_BASE_URL:-https://api.openai.com/v1}
-      - NOMAD_AGENT_MODEL=${NOMAD_AGENT_MODEL:-gpt-4o-mini}
       - EXCHANGERATE_HOST_ACCESS_KEY=${EXCHANGERATE_HOST_ACCESS_KEY:-}
     volumes:
       - nomad_data:/data

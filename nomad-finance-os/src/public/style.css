@@ -606,10 +606,6 @@ body.auth-required .fab {
   transition: margin 180ms ease;
 }
 
-#capturePanel {
-  display: none !important;
-}
-
 @keyframes fade-slide {
   from {
     opacity: 0;
