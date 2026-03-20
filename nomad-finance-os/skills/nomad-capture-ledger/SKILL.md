@@ -1,13 +1,13 @@
 ---
 name: nomad-capture-ledger
-description: Record expenses, income, and transfers into Nomad Finance OS. Trigger when the user mentions spending, receiving money, or transferring funds. Uses a safe draft-and-confirm workflow — always show the parsed draft and wait for explicit user confirmation before writing.
+description: Record expenses, income, and transfers into Nomad Finance OS. Trigger when the user mentions spending, receiving money, or transferring funds. Uses a confidence-gated draft-and-confirm workflow: auto-confirm when confidence is high, otherwise require explicit user confirmation.
 allowed-tools: Bash(curl *)
 ---
 
 # Nomad Capture Ledger
 
 Record financial transactions via the Nomad Finance OS API.
-Parse first, show draft, confirm only after explicit user approval.
+Parse first, show draft, then decide confirm behavior by confidence threshold.
 
 ## Environment
 
@@ -19,8 +19,8 @@ Required:
 
 1. Parse the user's message into a draft.
 2. Show the draft (type, amount, currency, category, account, date).
-3. Ask: "Confirm to record?" — wait for explicit yes/confirm/确认.
-4. On confirm: POST confirm-extraction.
+3. If `draft.confidence >= 0.85`, auto-confirm by calling `confirm-extraction`.
+4. If confidence is lower, ask: "Confirm to record?" — wait for explicit yes/confirm/确认.
 5. On cancel or no: stop. Do not write.
 
 ## Step 1 — Parse text
