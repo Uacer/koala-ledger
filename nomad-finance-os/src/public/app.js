@@ -3573,10 +3573,17 @@ function renderAccountComposition(dashboard) {
     .map((row, index) => {
       const color = palette[index % palette.length];
       const label = row.name || row.type || "Account";
-      const pct = ((row.amount_base / total) * 100).toFixed(1);
-      return `<span class="hero-legend-item"><span class="hero-legend-dot" style="background:${color};"></span>${escapeHtml(
-        label
-      )} · ${pct}%</span>`;
+      let amountStr;
+      if (row.account_id === "other") {
+        const base = dashboard.base_currency || state.settings?.base_currency || "USD";
+        amountStr = `${formatMoney(row.amount_base)} ${base}`;
+      } else if (row.currency && row.balance !== undefined) {
+        amountStr = `${formatMoney(row.balance)} ${row.currency}`;
+      } else {
+        const base = dashboard.base_currency || state.settings?.base_currency || "USD";
+        amountStr = `${formatMoney(row.amount_base)} ${base}`;
+      }
+      return `<span class="hero-legend-item"><span class="hero-legend-dot" style="background:${color};"></span>${escapeHtml(label)} · ${amountStr}</span>`;
     })
     .join("");
 }

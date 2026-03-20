@@ -2137,7 +2137,9 @@ function buildDashboardPayload(db, userId, month, baseCurrency) {
       account_id: account.id,
       name: account.name,
       type: account.type,
-      amount_base: Number(valueBase.toFixed(2))
+      amount_base: Number(valueBase.toFixed(2)),
+      balance: Number(account.balance),
+      currency: normalizeCurrency(account.currency)
     });
     if (account.type === "restricted_cash") {
       restrictedCashTotal += valueBase;
