@@ -20,7 +20,11 @@ const state = {
     authenticated: false,
     user: null,
     allowDevBypass: false,
-    devBypass: false
+    devBypass: false,
+    pendingEmail: "",
+    step: "email_step",
+    submitting: false,
+    resendCooldownSec: 0
   },
   latestExtractionId: null,
   latestExtractionDraft: null,
@@ -139,11 +143,22 @@ const I18N = {
     addIncome: "💰 Add Income",
     addTransfer: "🔁 Add Transfer",
     authTitle: "Nomad Finance OS",
-    authSubtitle: "Sign in with your email magic link.",
+    authSubtitle: "Sign in with your email verification code.",
     authEmailLabel: "Email",
-    authSendBtn: "Send Magic Link",
-    authHint: "We'll send a sign-in link that expires in 15 minutes.",
-    authSent: "Magic link sent. Check your inbox.",
+    authContinueBtn: "Continue",
+    authCodeLabel: "Verification Code",
+    authHint: "We'll send a 6-digit code that expires in 10 minutes.",
+    authSent: "Verification code sent. Check your inbox.",
+    authResendSent: "Verification code resent.",
+    authCodeSentTo: "Code sent to {email}. Enter it below.",
+    authResendIn: "{seconds}s before you can resend code.",
+    authResendBtn: "Resend verification code",
+    authSignedIn: "Signed in successfully.",
+    authCodeInvalid: "Verification code is invalid or expired.",
+    authTooMany: "Too many attempts. Please try again later.",
+    authEmailFailed: "Email delivery failed. Please try again.",
+    authRequestFailed: "Failed to request verification code.",
+    authVerifyFailed: "Verification failed. Please try again.",
     authSessionExpired: "Session expired. Please sign in again.",
     close: "Close",
     date: "Date",
@@ -369,11 +384,22 @@ const I18N = {
     addIncome: "💰 新增收入",
     addTransfer: "🔁 新增转账",
     authTitle: "Nomad Finance OS",
-    authSubtitle: "使用邮箱 Magic Link 登录。",
+    authSubtitle: "使用邮箱验证码登录。",
     authEmailLabel: "邮箱",
-    authSendBtn: "发送登录链接",
-    authHint: "我们会发送一个 15 分钟内有效的登录链接。",
-    authSent: "登录链接已发送，请检查邮箱。",
+    authContinueBtn: "继续",
+    authCodeLabel: "验证码",
+    authHint: "我们会发送一个 10 分钟内有效的 6 位验证码。",
+    authSent: "验证码已发送，请检查邮箱。",
+    authResendSent: "验证码已重新发送。",
+    authCodeSentTo: "验证码已发送到 {email}，请输入验证码。",
+    authResendIn: "{seconds}s 后可重新发送验证码。",
+    authResendBtn: "重新发送验证码",
+    authSignedIn: "登录成功。",
+    authCodeInvalid: "验证码无效或已过期。",
+    authTooMany: "操作过于频繁，请稍后再试。",
+    authEmailFailed: "邮件发送失败，请稍后重试。",
+    authRequestFailed: "验证码发送失败，请重试。",
+    authVerifyFailed: "验证码校验失败，请重试。",
     authSessionExpired: "登录已过期，请重新登录。",
     close: "关闭",
     date: "日期",
@@ -574,11 +600,13 @@ const I18N = {
 };
 
 const FX_QUOTE_CACHE = new Map();
+const AUTH_RESEND_COOLDOWN_SECONDS = 60;
 const MONEY_FORMATTER = new Intl.NumberFormat(undefined, {
   minimumFractionDigits: 2,
   maximumFractionDigits: 2
 });
 let quickEntryLimitReqSeq = 0;
+let authResendTimer = null;
 
 const $ = (selector) => document.querySelector(selector);
 
@@ -597,9 +625,15 @@ function bindUI() {
     syncControlState();
     await loadAll();
   });
-  const magicLinkForm = $("#magicLinkRequestForm");
-  if (magicLinkForm) {
-    magicLinkForm.addEventListener("submit", submitMagicLinkRequestForm);
+  const authGateForm = $("#authGateForm");
+  if (authGateForm) {
+    authGateForm.addEventListener("submit", submitAuthGateForm);
+  }
+  const authResendBtn = $("#authResendBtn");
+  if (authResendBtn) {
+    authResendBtn.addEventListener("click", () => {
+      void resendAuthCode();
+    });
   }
   const quickLogoutBtn = $("#quickLogoutBtn");
   if (quickLogoutBtn) {
@@ -1620,6 +1654,7 @@ function showAuthGate() {
     gate.setAttribute("aria-hidden", "false");
   }
   document.body.classList.add("auth-required");
+  renderAuthGate();
   syncDevBypassVisibility();
 }
 
@@ -1630,8 +1665,109 @@ function hideAuthGate() {
     gate.setAttribute("aria-hidden", "true");
   }
   document.body.classList.remove("auth-required");
+  resetAuthFormState();
+}
+
+function setAuthMessage(message, options = {}) {
   const authMessage = $("#authMessage");
-  if (authMessage) authMessage.textContent = "";
+  if (!authMessage) return;
+  authMessage.textContent = String(message || "");
+  authMessage.classList.toggle("auth-message-error", Boolean(options.error && message));
+}
+
+function renderAuthGate() {
+  const isCodeStep = state.auth.step === "code_step";
+  const emailInput = $("#authEmailInput");
+  const codeField = $("#authCodeField");
+  const codeInput = $("#authCodeInput");
+  const continueBtn = $("#authContinueBtn");
+  const resendLine = $("#authResendLine");
+  const resendText = $("#authResendText");
+  const resendBtn = $("#authResendBtn");
+
+  if (codeField) codeField.classList.toggle("hidden", !isCodeStep);
+
+  if (emailInput instanceof HTMLInputElement) {
+    if (isCodeStep && state.auth.pendingEmail) {
+      emailInput.value = String(state.auth.pendingEmail);
+    }
+    emailInput.readOnly = isCodeStep;
+  }
+
+  if (codeInput instanceof HTMLInputElement) {
+    codeInput.required = isCodeStep;
+  }
+
+  if (continueBtn instanceof HTMLButtonElement) {
+    continueBtn.textContent = t("authContinueBtn");
+    continueBtn.disabled = Boolean(state.auth.submitting);
+  }
+
+  if (resendLine) resendLine.classList.toggle("hidden", !isCodeStep);
+  if (isCodeStep) {
+    const cooldownSec = Math.max(0, Number(state.auth.resendCooldownSec || 0));
+    if (cooldownSec > 0) {
+      if (resendText) resendText.textContent = t("authResendIn", { seconds: String(cooldownSec) });
+      if (resendBtn instanceof HTMLButtonElement) {
+        resendBtn.classList.add("hidden");
+        resendBtn.disabled = true;
+      }
+    } else {
+      if (resendText) resendText.textContent = "";
+      if (resendBtn instanceof HTMLButtonElement) {
+        resendBtn.classList.remove("hidden");
+        resendBtn.disabled = Boolean(state.auth.submitting);
+      }
+    }
+  } else {
+    if (resendText) resendText.textContent = "";
+    if (resendBtn instanceof HTMLButtonElement) {
+      resendBtn.classList.add("hidden");
+      resendBtn.disabled = true;
+    }
+  }
+}
+
+function stopAuthResendCooldown(resetState = false) {
+  if (authResendTimer) {
+    clearInterval(authResendTimer);
+    authResendTimer = null;
+  }
+  if (resetState) {
+    state.auth.resendCooldownSec = 0;
+  }
+}
+
+function startAuthResendCooldown(seconds = AUTH_RESEND_COOLDOWN_SECONDS) {
+  stopAuthResendCooldown(false);
+  state.auth.resendCooldownSec = Math.max(0, Math.floor(Number(seconds) || 0));
+  renderAuthGate();
+  if (state.auth.resendCooldownSec <= 0) return;
+  authResendTimer = setInterval(() => {
+    state.auth.resendCooldownSec = Math.max(0, Number(state.auth.resendCooldownSec || 0) - 1);
+    if (state.auth.resendCooldownSec <= 0) {
+      stopAuthResendCooldown(false);
+    }
+    renderAuthGate();
+  }, 1000);
+}
+
+function resetAuthFormState() {
+  stopAuthResendCooldown(true);
+  state.auth.pendingEmail = "";
+  state.auth.step = "email_step";
+  state.auth.submitting = false;
+  const emailInput = $("#authEmailInput");
+  if (emailInput instanceof HTMLInputElement) {
+    emailInput.value = "";
+    emailInput.readOnly = false;
+  }
+  const codeInput = $("#authCodeInput");
+  if (codeInput instanceof HTMLInputElement) {
+    codeInput.value = "";
+  }
+  setAuthMessage("");
+  renderAuthGate();
 }
 
 function syncDevBypassVisibility() {
@@ -1645,39 +1781,121 @@ function syncDevBypassVisibility() {
   }
 }
 
-async function submitMagicLinkRequestForm(event) {
+function buildAuthRequestError(response, payload) {
+  const detail =
+    typeof payload?.error === "string"
+      ? payload.error
+      : payload?.error
+        ? JSON.stringify(payload.error)
+        : `${response.status} ${response.statusText}`;
+  const error = new Error(detail);
+  error.status = response.status;
+  return error;
+}
+
+function resolveAuthErrorMessage(error, phase) {
+  const status = Number(error?.status || 0);
+  if (status === 429) return t("authTooMany");
+  if (status === 502) return t("authEmailFailed");
+  if (phase === "verify" && status === 400) return t("authCodeInvalid");
+  if (phase === "request") return t("authRequestFailed");
+  if (phase === "verify") return t("authVerifyFailed");
+  return String(error?.message || t("authVerifyFailed"));
+}
+
+async function requestAuthCode(email, options = {}) {
+  const asResend = Boolean(options.asResend);
+  const response = await fetch("/api/v1/auth/code/request", {
+    method: "POST",
+    credentials: "same-origin",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ email })
+  });
+  const payload = await safeJson(response);
+  if (!response.ok) {
+    throw buildAuthRequestError(response, payload);
+  }
+  state.auth.pendingEmail = String(email || "").trim();
+  state.auth.step = "code_step";
+  startAuthResendCooldown();
+  setAuthMessage(t("authCodeSentTo", { email: state.auth.pendingEmail }));
+  renderAuthGate();
+  const codeInput = $("#authCodeInput");
+  if (codeInput instanceof HTMLInputElement) codeInput.focus();
+  showToast(asResend ? t("authResendSent") : t("authSent"));
+}
+
+async function submitAuthGateForm(event) {
   event.preventDefault();
   const form = event.currentTarget;
   if (!(form instanceof HTMLFormElement)) return;
-  const button = $("#authRequestBtn");
-  const authMessage = $("#authMessage");
+  if (state.auth.submitting) return;
   const fd = new FormData(form);
   const email = String(fd.get("email") || "").trim();
+  const isCodeStep = state.auth.step === "code_step";
+  const code = String(fd.get("code") || "")
+    .trim()
+    .replace(/\s+/g, "");
+
   if (!email) return;
-  if (button instanceof HTMLButtonElement) button.disabled = true;
+  if (isCodeStep && !code) return;
+
+  state.auth.submitting = true;
+  setAuthMessage("");
+  renderAuthGate();
   try {
-    const response = await fetch("/api/v1/auth/magic-link/request", {
+    if (!isCodeStep) {
+      await requestAuthCode(email, { asResend: false });
+      return;
+    }
+
+    const verifyRes = await fetch("/api/v1/auth/code/verify", {
       method: "POST",
       credentials: "same-origin",
       headers: { "content-type": "application/json" },
-      body: JSON.stringify({ email })
+      body: JSON.stringify({ email: state.auth.pendingEmail || email, code })
     });
-    const payload = await safeJson(response);
-    if (!response.ok) {
-      const detail =
-        typeof payload?.error === "string"
-          ? payload.error
-          : payload?.error
-            ? JSON.stringify(payload.error)
-            : `${response.status} ${response.statusText}`;
-      throw new Error(detail);
+    const verifyPayload = await safeJson(verifyRes);
+    if (!verifyRes.ok) {
+      throw buildAuthRequestError(verifyRes, verifyPayload);
     }
-    if (authMessage) authMessage.textContent = t("authSent");
-    showToast(t("authSent"));
+    setAuthMessage("");
+    await loadAuthSession();
+    if (!state.auth.authenticated) {
+      throw new Error(t("authVerifyFailed"));
+    }
+    hideAuthGate();
+    showToast(t("authSignedIn"));
+    await loadAll();
   } catch (error) {
-    showToast(String(error?.message || "Failed to request magic link."), true);
+    const message = resolveAuthErrorMessage(error, isCodeStep ? "verify" : "request");
+    setAuthMessage(message, { error: true });
+    showToast(message, true);
   } finally {
-    if (button instanceof HTMLButtonElement) button.disabled = false;
+    state.auth.submitting = false;
+    renderAuthGate();
+  }
+}
+
+async function resendAuthCode() {
+  if (state.auth.step !== "code_step") return;
+  if (state.auth.submitting) return;
+  if (Number(state.auth.resendCooldownSec || 0) > 0) return;
+  const email = String(state.auth.pendingEmail || "").trim();
+  if (!email) return;
+
+  state.auth.submitting = true;
+  setAuthMessage("");
+  renderAuthGate();
+  try {
+    await requestAuthCode(email, { asResend: true });
+  } catch (error) {
+    const message = resolveAuthErrorMessage(error, "request");
+    setAuthMessage(message, { error: true });
+    showToast(message, true);
+  } finally {
+    state.auth.submitting = false;
+    renderAuthGate();
   }
 }
 
@@ -1693,9 +1911,14 @@ async function logoutCurrentSession() {
   state.auth.authenticated = false;
   state.auth.user = null;
   state.auth.devBypass = false;
+  state.auth.pendingEmail = "";
+  state.auth.step = "email_step";
+  state.auth.submitting = false;
+  stopAuthResendCooldown(true);
   closeSheet("settingsSheet");
   closeAllSheets();
   closeUtilityPanel();
+  setAuthMessage("");
   showAuthGate();
 }
 
@@ -4426,7 +4649,9 @@ function applyI18n() {
   setText("authTitle", t("authTitle"));
   setText("authSubtitle", t("authSubtitle"));
   setText("authEmailLabel", t("authEmailLabel"));
-  setText("authRequestBtn", t("authSendBtn"));
+  setText("authContinueBtn", t("authContinueBtn"));
+  setText("authCodeLabel", t("authCodeLabel"));
+  setText("authResendBtn", t("authResendBtn"));
   setText("authHint", t("authHint"));
   setText("subtitleText", t("subtitle"));
   setText("monthLabelText", t("month"));

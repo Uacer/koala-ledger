@@ -17,9 +17,9 @@
     <section id="authGate" class="auth-gate hidden" aria-hidden="true">
       <article class="auth-card">
         <h1 id="authTitle">Nomad Finance OS</h1>
-        <p id="authSubtitle">Sign in with your email magic link.</p>
-        <form id="magicLinkRequestForm" class="auth-form">
-          <label>
+        <p id="authSubtitle">Sign in with your email verification code.</p>
+        <form id="authGateForm" class="auth-form">
+          <label class="auth-field">
             <span id="authEmailLabel">Email</span>
             <input
               id="authEmailInput"
@@ -31,10 +31,28 @@
               placeholder="you@example.com"
             />
           </label>
-          <button id="authRequestBtn" class="btn btn-solid" type="submit">Send Magic Link</button>
+          <label id="authCodeField" class="auth-field hidden">
+            <span id="authCodeLabel">Verification Code</span>
+            <input
+              id="authCodeInput"
+              name="code"
+              type="text"
+              inputmode="numeric"
+              pattern="[0-9]{6}"
+              maxlength="6"
+              autocomplete="one-time-code"
+              required
+              placeholder="123456"
+            />
+          </label>
+          <button id="authContinueBtn" class="btn btn-solid" type="submit">Continue</button>
+          <p id="authResendLine" class="muted hidden">
+            <span id="authResendText"></span>
+            <button id="authResendBtn" class="auth-inline-link hidden" type="button">Resend verification code</button>
+          </p>
         </form>
-        <p id="authHint" class="muted">We'll send a sign-in link that expires in 15 minutes.</p>
-        <p id="authMessage" class="muted"></p>
+        <p id="authHint" class="muted">We'll send a 6-digit code that expires in 10 minutes.</p>
+        <p id="authMessage" class="muted" aria-live="polite"></p>
       </article>
     </section>
     <header class="topbar minimal-topbar">
