@@ -85,7 +85,6 @@
 
     <nav class="tabs" aria-label="Panels">
       <button class="tab active" data-panel="dashboardPanel">🏠 Dashboard</button>
-      <button class="tab" data-panel="capturePanel">📸 Capture</button>
       <button class="tab" data-panel="transactionsPanel">🧾 Transactions</button>
       <button class="tab" data-panel="budgetsPanel">📋 Budgets</button>
       <button class="tab" data-panel="accountsPanel">🏦 Accounts</button>
@@ -185,39 +184,6 @@
           <div id="riskMetrics" class="list-block"></div>
         </article>
         </div>
-      </section>
-
-      <section id="capturePanel" class="panel">
-        <h2>Capture / AI Parse</h2>
-        <form id="captureTextForm" class="card">
-          <h3>Natural Language</h3>
-          <label>
-            Text
-            <textarea name="text" rows="4" placeholder="午饭 220 THB"></textarea>
-          </label>
-          <button class="btn btn-solid" type="submit">Parse Text</button>
-        </form>
-        <form id="captureImageForm" class="card">
-          <h3>Receipt / Screenshot OCR Text</h3>
-          <label>
-            OCR Text
-            <textarea name="ocr_text" rows="5" placeholder="7-Eleven 120 THB"></textarea>
-          </label>
-          <label>
-            Image Base64 / Data URL (optional)
-            <textarea
-              name="image_base64"
-              rows="4"
-              placeholder="data:image/png;base64,iVBORw0KGgo..."
-            ></textarea>
-          </label>
-          <button class="btn btn-solid" type="submit">Parse Image Text</button>
-        </form>
-        <article class="card">
-          <h3>Latest Extraction Draft</h3>
-          <pre id="extractionPreview" class="pre"></pre>
-          <button id="confirmExtractionBtn" class="btn btn-solid">Confirm Draft to Transaction</button>
-        </article>
       </section>
 
       <section id="transactionsPanel" class="panel">

@@ -17,7 +17,6 @@ const {
   normalizeMonth
 } = require("./db");
 const { fetchFxRate, normalizeCurrency, peekRecentRate } = require("./fx");
-const { buildExtractionDraft } = require("./ai");
 
 const FX_RATE_CACHE_TTL_MS = Math.max(
   60 * 60 * 1000,
@@ -74,14 +73,12 @@ const AUTH_CODE_VERIFY_RATE_LIMIT = new Map();
 const DEFAULT_AGENT_SCOPES = [
   "transactions:write",
   "transactions:read",
-  "transactions:parse",
   "accounts:read",
   "categories:read"
 ];
 const ALLOWED_AGENT_SCOPES = new Set([
   "transactions:write",
   "transactions:read",
-  "transactions:parse",
   "accounts:read",
   "accounts:write",
   "categories:read",
@@ -1189,182 +1186,6 @@ function createApp(db) {
       .all(req.userId, req.userId)
       .map((row) => ({ name: row.name, usage_count: Number(row.usage_count) }));
     res.json(rows);
-  });
-
-  app.post("/api/v1/transactions/parse-text", async (req, res) => {
-    const schema = z.object({
-      text: z.string().min(1).max(2000)
-    });
-    const parsed = schema.safeParse(req.body);
-    if (!parsed.success) {
-      return res.status(400).json({ error: parsed.error.flatten() });
-    }
-    const input = parsed.data;
-    const categories = getCategoriesMap(db, req.userId);
-    const accounts = getAccounts(db, req.userId);
-    let extraction;
-    try {
-      extraction = await buildExtractionDraft({
-        text: input.text,
-        imageBase64: null,
-        categories,
-        accounts
-      });
-    } catch (error) {
-      return res.status(resolveAiParseStatus(error)).json({
-        error: String(error.message || "AI parsing failed.")
-      });
-    }
-    let draft;
-    try {
-      draft = await enrichDraftWithFx(db, req.userId, extraction.draft);
-    } catch (error) {
-      return res.status(resolveFxErrorStatus(error)).json({ error: formatFxError(error) });
-    }
-    const record = insertExtraction(db, req.userId, {
-      source_type: "text",
-      raw_text: input.text,
-      raw_image_base64: "",
-      draft,
-      error_message: extraction.error_message || ""
-    });
-    logEvent(db, req.userId, "capture_text_parsed", {
-      fallback_used: extraction.fallback_used
-    });
-    if (req.authMethod === "api_token") {
-      logEvent(db, req.userId, "agent_token_used", {
-        token_id: req.tokenId,
-        action: "transactions.parse_text"
-      });
-    }
-    res.status(201).json({
-      extraction_id: record.id,
-      draft,
-      fallback_used: extraction.fallback_used,
-      error_message: extraction.error_message || ""
-    });
-  });
-
-  app.post("/api/v1/transactions/parse-image", async (req, res) => {
-    const schema = z.object({
-      ocr_text: z.string().max(10000).optional(),
-      image_base64: z.string().max(5000000).optional()
-    });
-    const parsed = schema.safeParse(req.body);
-    if (!parsed.success) {
-      return res.status(400).json({ error: parsed.error.flatten() });
-    }
-    const input = parsed.data;
-    if ((!input.ocr_text || !String(input.ocr_text).trim()) && !input.image_base64) {
-      return res.status(400).json({ error: "ocr_text or image_base64 is required." });
-    }
-    const categories = getCategoriesMap(db, req.userId);
-    const accounts = getAccounts(db, req.userId);
-    const text = input.ocr_text || "";
-    let extraction;
-    try {
-      extraction = await buildExtractionDraft({
-        text,
-        imageBase64: input.image_base64 || null,
-        categories,
-        accounts
-      });
-    } catch (error) {
-      return res.status(resolveAiParseStatus(error)).json({
-        error: String(error.message || "AI image parsing failed.")
-      });
-    }
-    let draft;
-    try {
-      draft = await enrichDraftWithFx(db, req.userId, extraction.draft);
-    } catch (error) {
-      return res.status(resolveFxErrorStatus(error)).json({ error: formatFxError(error) });
-    }
-    const record = insertExtraction(db, req.userId, {
-      source_type: "image",
-      raw_text: text,
-      raw_image_base64: input.image_base64 || "",
-      draft,
-      error_message: extraction.error_message || ""
-    });
-    logEvent(db, req.userId, "capture_image_parsed", {
-      fallback_used: extraction.fallback_used
-    });
-    if (req.authMethod === "api_token") {
-      logEvent(db, req.userId, "agent_token_used", {
-        token_id: req.tokenId,
-        action: "transactions.parse_image"
-      });
-    }
-    res.status(201).json({
-      extraction_id: record.id,
-      draft,
-      fallback_used: extraction.fallback_used,
-      error_message: extraction.error_message || ""
-    });
-  });
-
-  app.post("/api/v1/transactions/confirm-extraction", async (req, res) => {
-    const schema = z.object({
-      extraction_id: z.number().int().positive(),
-      overrides: z.record(z.any()).optional()
-    });
-    const parsed = schema.safeParse(req.body);
-    if (!parsed.success) {
-      return res.status(400).json({ error: parsed.error.flatten() });
-    }
-    const extractionId = parsed.data.extraction_id;
-    const row = db
-      .prepare("SELECT * FROM ai_extractions WHERE id = ? AND user_id = ?")
-      .get(extractionId, req.userId);
-    if (!row) {
-      return res.status(404).json({ error: "Extraction not found." });
-    }
-    const draft = JSON.parse(row.draft_json);
-    const merged = { ...draft, ...(parsed.data.overrides || {}) };
-    if (typeof merged.tags === "string") {
-      merged.tags = merged.tags
-        .split(",")
-        .map((x) => x.trim())
-        .filter(Boolean);
-    }
-    let payload;
-    try {
-      payload = await enrichDraftWithFx(db, req.userId, merged);
-    } catch (error) {
-      return res.status(resolveFxErrorStatus(error)).json({ error: formatFxError(error) });
-    }
-    try {
-      await ensurePayloadFxCoverage(db, req.userId, payload);
-      await ensureRebuildFxCoverage(db, req.userId);
-    } catch (error) {
-      return res.status(resolveFxErrorStatus(error)).json({ error: formatFxError(error) });
-    }
-    let transaction;
-    try {
-      transaction = createTransactionRecord(db, req.userId, payload);
-    } catch (error) {
-      return res.status(400).json({ error: String(error.message || "Invalid extraction payload.") });
-    }
-    db.prepare(
-      `
-        UPDATE ai_extractions
-        SET status = 'confirmed', updated_at = CURRENT_TIMESTAMP
-        WHERE id = ? AND user_id = ?
-      `
-    ).run(extractionId, req.userId);
-    logEvent(db, req.userId, "extraction_confirmed", {
-      extraction_id: extractionId,
-      transaction_id: transaction.id
-    });
-    if (req.authMethod === "api_token") {
-      logEvent(db, req.userId, "agent_token_used", {
-        token_id: req.tokenId,
-        action: "transactions.confirm_extraction",
-        transaction_id: transaction.id
-      });
-    }
-    res.status(201).json(transaction);
   });
 
   app.post("/api/v1/transactions", async (req, res) => {
@@ -2501,28 +2322,6 @@ function deleteTransactionRecord(db, userId, txId) {
   rebuildUserBalances(db, userId);
 }
 
-function insertExtraction(db, userId, payload) {
-  const result = db
-    .prepare(
-      `
-        INSERT INTO ai_extractions (
-          user_id, source_type, raw_text, raw_image_base64, draft_json, status, error_message
-        ) VALUES (?, ?, ?, ?, ?, 'draft', ?)
-      `
-    )
-    .run(
-      userId,
-      payload.source_type,
-      payload.raw_text || "",
-      payload.raw_image_base64 || "",
-      JSON.stringify(payload.draft),
-      payload.error_message || ""
-    );
-  return db
-    .prepare("SELECT id, source_type, status, created_at FROM ai_extractions WHERE id = ?")
-    .get(Number(result.lastInsertRowid));
-}
-
 function logEvent(db, userId, eventName, payload = {}) {
   const month = new Date().toISOString().slice(0, 7);
   db.prepare(
@@ -3002,10 +2801,6 @@ function resolveRequiredScope(req) {
   if (path.startsWith("/api/v1/crypto/")) return method === "GET" ? "accounts:read" : "accounts:write";
   if (path === "/api/v1/admin/rebuild-balances") return "admin:rebuild-balances";
   if (path === "/api/v1/tags") return "tags:read";
-  if (path === "/api/v1/transactions/parse-text" || path === "/api/v1/transactions/parse-image") {
-    return "transactions:parse";
-  }
-  if (path === "/api/v1/transactions/confirm-extraction") return "transactions:write";
   if (path === "/api/v1/transactions") return method === "GET" ? "transactions:read" : "transactions:write";
   if (path.startsWith("/api/v1/transactions/")) return method === "GET" ? "transactions:read" : "transactions:write";
   if (path === "/api/v1/budgets" || path === "/api/v1/budgets/yearly") {
@@ -3040,10 +2835,6 @@ function summarizeErrorForLog(error) {
 
 function resolveFxErrorStatus(error) {
   return String(error?.code || "") === "FX_QUOTE_UNAVAILABLE" ? 503 : 500;
-}
-
-function resolveAiParseStatus(error) {
-  return String(error?.code || "") === "AI_AGENT_NOT_CONFIGURED" ? 503 : 502;
 }
 
 function formatFxError(error) {

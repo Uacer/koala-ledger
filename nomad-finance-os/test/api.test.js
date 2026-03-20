@@ -6,16 +6,8 @@ const { createApp } = require("../src/app");
 
 function createHarness(options = {}) {
   const allowDevBypass = options.allowDevBypass !== undefined ? Boolean(options.allowDevBypass) : true;
-  const agentApiKey =
-    options.agentApiKey !== undefined ? String(options.agentApiKey || "") : "test-agent-key";
   const previousBypass = process.env.AUTH_ALLOW_DEV_BYPASS;
   process.env.AUTH_ALLOW_DEV_BYPASS = allowDevBypass ? "1" : "0";
-  if (agentApiKey) {
-    process.env.NOMAD_AGENT_API_KEY = agentApiKey;
-  } else {
-    delete process.env.NOMAD_AGENT_API_KEY;
-  }
-  delete process.env.OPENAI_API_KEY;
   const db = createDb(":memory:");
   const app = createApp(db);
   if (previousBypass === undefined) {
@@ -44,20 +36,6 @@ function createBearerApiClient(rawApi, token) {
     wrapped[method] = (url) => rawApi[method](url).set("authorization", `Bearer ${token}`);
   }
   return wrapped;
-}
-
-async function withMockedFetchJson(jsonPayload, fn) {
-  const originalFetch = global.fetch;
-  global.fetch = async () => ({
-    ok: true,
-    status: 200,
-    json: async () => jsonPayload
-  });
-  try {
-    return await fn();
-  } finally {
-    global.fetch = originalFetch;
-  }
 }
 
 async function signInViaEmailCode(rawApi, email = "agent-user@example.com") {
@@ -644,53 +622,6 @@ test("settings persists ui_language", async () => {
   assert.equal(after.body.ui_language, "zh");
 });
 
-test("parse-text extraction + confirm flow", async () => {
-  const { api } = createHarness();
-  const date = "2026-03-10";
-  const cash = await createAccount(api, {
-    name: "Cash",
-    type: "cash",
-    currency: "USD",
-    balance: 500
-  });
-  assert.ok(cash.id > 0);
-
-  const parseRes = await withMockedFetchJson(
-    {
-      choices: [
-        {
-          message: {
-            content: JSON.stringify({
-              type: "expense",
-              amount_original: 20,
-              currency_original: "USD",
-              category_l1: "Living",
-              category_l2: "Groceries",
-              confidence: 0.95
-            })
-          }
-        }
-      ]
-    },
-    async () => api.post("/api/v1/transactions/parse-text").send({ text: "Lunch 20 USD" })
-  );
-  assert.equal(parseRes.status, 201);
-  assert.ok(parseRes.body.extraction_id > 0);
-  assert.equal(parseRes.body.draft.type, "expense");
-
-  const confirmRes = await api.post("/api/v1/transactions/confirm-extraction").send({
-    extraction_id: parseRes.body.extraction_id,
-    overrides: {
-      date,
-      account_from_id: cash.id,
-      category_l1: "Living",
-      category_l2: "Groceries"
-    }
-  });
-  assert.equal(confirmRes.status, 201);
-  assert.equal(confirmRes.body.type, "expense");
-});
-
 test("yearly budgets + monthly snapshot generation", async () => {
   const { api } = createHarness();
   const year = 2026;
@@ -716,15 +647,6 @@ test("yearly budgets + monthly snapshot generation", async () => {
   const snapshotRes = await api.post("/api/v1/reviews/monthly/generate").send({ month });
   assert.equal(snapshotRes.status, 201);
   assert.equal(snapshotRes.body.month, month);
-});
-
-test("parse-image returns 503 when AI agent is not configured", async () => {
-  const { api } = createHarness({ agentApiKey: "" });
-  const res = await api.post("/api/v1/transactions/parse-image").send({
-    image_base64: "data:image/png;base64,AAA"
-  });
-  assert.equal(res.status, 503);
-  assert.match(res.body.error, /AI agent is not configured/i);
 });
 
 test("analytics summary returns key event counters", async () => {
@@ -950,77 +872,6 @@ test("force delete account removes linked transactions and rebuilds remaining ac
   const txRes = await api.get(`/api/v1/transactions?month=${month}`).send();
   assert.equal(txRes.status, 200);
   assert.equal(txRes.body.length, 0);
-});
-
-test("parse-text handles baht alias and maps travel phrase to lifestyle", async () => {
-  const { api } = createHarness();
-  const account = await createAccount(api, {
-    name: "Main Wallet",
-    type: "cash",
-    currency: "USD",
-    balance: 1000
-  });
-  assert.ok(account.id > 0);
-
-  const originalFetch = global.fetch;
-  let parseRes;
-  global.fetch = async (url) => {
-    const href = String(url || "");
-    if (href.includes("/chat/completions")) {
-      return {
-        ok: true,
-        status: 200,
-        json: async () => ({
-          choices: [
-            {
-              message: {
-                content: JSON.stringify({
-                  type: "expense",
-                  amount_original: 10000,
-                  currency_original: "Baht",
-                  category_l1: "Lifestyle",
-                  category_l2: "Entertainment",
-                  note: "旅游花了10000泰铢"
-                })
-              }
-            }
-          ]
-        })
-      };
-    }
-    const parsed = new URL(href, "http://localhost");
-    const base = String(parsed.searchParams.get("base") || parsed.searchParams.get("source") || "USD").toUpperCase();
-    const symbol =
-      String(parsed.searchParams.get("symbols") || parsed.searchParams.get("currencies") || "")
-        .split(",")
-        .map((x) => x.trim().toUpperCase())
-        .filter(Boolean)[0] || "USD";
-    if (base === "THB" && symbol === "USD") {
-      return {
-        ok: true,
-        status: 200,
-        json: async () => ({ rates: { USD: 0.02816901 } })
-      };
-    }
-    return {
-      ok: false,
-      status: 503,
-      json: async () => ({})
-    };
-  };
-  try {
-    parseRes = await api.post("/api/v1/transactions/parse-text").send({
-      text: "旅游花了10000泰铢"
-    });
-  } finally {
-    global.fetch = originalFetch;
-  }
-  assert.equal(parseRes.status, 201);
-  assert.equal(parseRes.body.draft.amount_original, 10000);
-  assert.equal(parseRes.body.draft.currency_original, "THB");
-  assert.equal(parseRes.body.draft.type, "expense");
-  assert.equal(parseRes.body.draft.category_l1, "Lifestyle");
-  assert.equal(parseRes.body.draft.category_l2, "Entertainment");
 });
 
 test("changing base currency changes monthly income/expense display values", async () => {
@@ -1426,7 +1277,7 @@ test("session user can create/list/revoke agent tokens", async () => {
   assert.equal(afterRevoke.body[0].revoked, true);
 });
 
-test("bearer token supports parse -> confirm flow with default scopes", async () => {
+test("bearer token default scopes support direct transaction write", async () => {
   const { app, rawApi } = createHarness({ allowDevBypass: false });
   await signInViaEmailCode(rawApi, "parse-owner@example.com");
 
@@ -1438,43 +1289,21 @@ test("bearer token supports parse -> confirm flow with default scopes", async ()
   });
   assert.equal(cashRes.status, 201);
 
-  const tokenRes = await rawApi.post("/api/v1/auth/agent-tokens").send({ name: "Parser Agent" });
+  const tokenRes = await rawApi.post("/api/v1/auth/agent-tokens").send({ name: "Writer Agent" });
   assert.equal(tokenRes.status, 201);
   const bearerApi = createBearerApiClient(request.agent(app), tokenRes.body.token);
 
-  const parseRes = await withMockedFetchJson(
-    {
-      choices: [
-        {
-          message: {
-            content: JSON.stringify({
-              type: "expense",
-              amount_original: 20,
-              currency_original: "USD",
-              category_l1: "Living",
-              category_l2: "Groceries",
-              confidence: 0.91
-            })
-          }
-        }
-      ]
-    },
-    async () => bearerApi.post("/api/v1/transactions/parse-text").send({ text: "Lunch 20 USD" })
-  );
-  assert.equal(parseRes.status, 201);
-  assert.ok(parseRes.body.extraction_id > 0);
-
-  const confirmRes = await bearerApi.post("/api/v1/transactions/confirm-extraction").send({
-    extraction_id: parseRes.body.extraction_id,
-    overrides: {
-      date: "2026-03-14",
-      account_from_id: cashRes.body.id,
-      category_l1: "Living",
-      category_l2: "Groceries"
-    }
+  const createTxRes = await bearerApi.post("/api/v1/transactions").send({
+    date: "2026-03-14",
+    type: "expense",
+    amount_original: 20,
+    currency_original: "USD",
+    account_from_id: cashRes.body.id,
+    category_l1: "Living",
+    category_l2: "Groceries"
   });
-  assert.equal(confirmRes.status, 201);
-  assert.equal(confirmRes.body.type, "expense");
+  assert.equal(createTxRes.status, 201);
+  assert.equal(createTxRes.body.type, "expense");
 });
 
 test("bearer token scope restricts write access", async () => {

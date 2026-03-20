@@ -156,22 +156,6 @@ CREATE TABLE IF NOT EXISTS yearly_budgets (
 
 CREATE INDEX IF NOT EXISTS idx_yearly_budgets_user_year ON yearly_budgets(user_id, year);
 
-CREATE TABLE IF NOT EXISTS ai_extractions (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    user_id INTEGER NOT NULL,
-    source_type TEXT NOT NULL,
-    raw_text TEXT NOT NULL DEFAULT '',
-    raw_image_base64 TEXT NOT NULL DEFAULT '',
-    draft_json TEXT NOT NULL,
-    status TEXT NOT NULL DEFAULT 'draft',
-    error_message TEXT NOT NULL DEFAULT '',
-    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
-);
-
-CREATE INDEX IF NOT EXISTS idx_ai_extractions_user ON ai_extractions(user_id);
-
 CREATE TABLE IF NOT EXISTS auth_email_codes (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     user_id INTEGER NOT NULL,

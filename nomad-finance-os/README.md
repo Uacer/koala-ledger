@@ -9,8 +9,6 @@ Web-first MVP backend implementing:
 - Dashboard with `restricted_cash_total`
 - Runway and risk metrics
 - Monthly review separating transfers from real expense + snapshot generation
-- Built-in AI agent (OpenAI-compatible endpoint) + parse text/image draft + confirm extraction
-- Capture parse is AI-only and uses server-side agent config (no per-user provider setup)
 - FX quote endpoint and auto conversion to base currency
 - Fixed currency list for MVP: `CNY, EUR, THB, USD, JPY, KRW`
 - UI language setting: `en` / `zh` (persisted per user)
@@ -43,9 +41,6 @@ Open `http://localhost:5001` for the mobile-first UI.
 
 Optional env:
 
-- `NOMAD_AGENT_API_KEY` or `OPENAI_API_KEY`: API key for server-side AI agent (required for parse APIs)
-- `NOMAD_AGENT_BASE_URL` or `OPENAI_BASE_URL`: OpenAI-compatible base URL (defaults to `https://api.openai.com/v1`)
-- `NOMAD_AGENT_MODEL` or `OPENAI_MODEL`: model name (defaults to `gpt-4o-mini`)
 - `DB_PATH`: SQLite path (defaults to `nomad-finance.db`)
 - `BACKUP_DIR`: backup output directory (defaults to `backups`)
 - `PORT`: API port (defaults to `5001`)
@@ -159,9 +154,6 @@ Sample cron entries are provided at `ops/cron/backup.cron`:
 - `DELETE /api/v1/crypto/accounts/:id/positions/:symbol`
 - `GET /api/v1/crypto/portfolio`
 - `GET /api/v1/tags`
-- `POST /api/v1/transactions/parse-text`
-- `POST /api/v1/transactions/parse-image`
-- `POST /api/v1/transactions/confirm-extraction`
 - `POST /api/v1/transactions`
 - `GET /api/v1/transactions`
 - `POST /api/v1/budgets`

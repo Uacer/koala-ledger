@@ -1,81 +1,94 @@
 ---
 name: nomad-capture-ledger
-description: Record expenses, income, and transfers into Nomad Finance OS. Trigger when the user mentions spending, receiving money, or transferring funds. Uses a confidence-gated draft-and-confirm workflow: auto-confirm when confidence is high, otherwise require explicit user confirmation.
+description: Record expenses, income, and transfers into Nomad Finance OS when the parser/model is already available on user side. Focus on request construction and validation rules for direct transaction write APIs.
 allowed-tools: Bash(curl *)
 ---
 
 # Nomad Capture Ledger
 
 Record financial transactions via the Nomad Finance OS API.
-Parse first, show draft, then decide confirm behavior by confidence threshold.
+The local model/parser runs outside this skill. This skill only builds correct API requests and applies posting rules.
 
 ## Environment
 
 Required:
-- `NOMAD_API_BASE_URL` — server URL, e.g. `https://your-server.com`
 - `NOMAD_API_TOKEN` — Bearer token from Settings → Agent Access
+
+Fixed server URL:
+- `https://ledger.sainwellx.xyz`
 
 ## Workflow
 
-1. Parse the user's message into a draft.
-2. Show the draft (type, amount, currency, category, account, date).
-3. If `draft.confidence >= 0.85`, auto-confirm by calling `confirm-extraction`.
-4. If confidence is lower, ask: "Confirm to record?" — wait for explicit yes/confirm/确认.
-5. On cancel or no: stop. Do not write.
+1. Receive structured draft from local model/parser.
+2. Validate required fields by `type` (expense/income/transfer).
+3. If parser confidence is high (`>= 0.85`), write directly.
+4. If confidence is lower, ask user confirmation before write.
+5. POST `/api/v1/transactions` with normalized payload.
+6. If API validation fails, fetch context and repair fields, then retry.
 
-## Step 1 — Parse text
-
-```sh
-curl -s -X POST "$NOMAD_API_BASE_URL/api/v1/transactions/parse-text" \
-  -H "Authorization: Bearer $NOMAD_API_TOKEN" \
-  -H "Content-Type: application/json" \
-  -d '{"text": "<user message>"}'
-```
-
-Response fields to show the user:
-- `extraction_id` — save this for confirm
-- `draft.type` — expense / income / transfer
-- `draft.amount_original` + `draft.currency_original`
-- `draft.category_l1` / `draft.category_l2`
-- `draft.account_from_id` / `draft.account_to_id`
-- `draft.date`
-- `draft.confidence`
-- `summary_zh` / `summary_en` — bilingual summary
-
-## Step 1 (alt) — Parse OCR / image text
+## Step 1 — Fetch Context (for mapping IDs/categories)
 
 ```sh
-curl -s -X POST "$NOMAD_API_BASE_URL/api/v1/transactions/parse-image" \
-  -H "Authorization: Bearer $NOMAD_API_TOKEN" \
-  -H "Content-Type: application/json" \
-  -d '{"ocr_text": "<extracted text from image>"}'
+curl -s "https://ledger.sainwellx.xyz/api/v1/accounts" \
+  -H "Authorization: Bearer $NOMAD_API_TOKEN"
 ```
-
-## Step 2 — Confirm
 
 ```sh
-curl -s -X POST "$NOMAD_API_BASE_URL/api/v1/transactions/confirm-extraction" \
-  -H "Authorization: Bearer $NOMAD_API_TOKEN" \
-  -H "Content-Type: application/json" \
-  -d '{"extraction_id": <id>}'
+curl -s "https://ledger.sainwellx.xyz/api/v1/categories" \
+  -H "Authorization: Bearer $NOMAD_API_TOKEN"
 ```
 
-With optional field overrides:
+Use these to map account names -> `account_from_id`/`account_to_id` and ensure category pair is active.
+
+## Step 2 — Build Request Body
+
+Base fields (all transaction types):
+- `date` (`YYYY-MM-DD`)
+- `type` (`expense` | `income` | `transfer`)
+- `amount_original` (positive number)
+- `currency_original` (`CNY|EUR|THB|USD|JPY|KRW`)
+- `note` (optional)
+- `tags` (optional string array)
+
+Type-specific required fields:
+- `expense`: `account_from_id`, `category_l1`, `category_l2`
+- `income`: `account_to_id`
+- `transfer`:
+  - `transfer_reason=normal|deposit_lock|deposit_release`: require both `account_from_id` and `account_to_id`, and they must be different
+  - `transfer_reason=loan`: require `account_from_id`, do not send `account_to_id`
+  - `transfer_reason=borrow`: require `account_to_id`, do not send `account_from_id`
+
+Restricted cash rules:
+- `deposit_lock`: destination account type must be `restricted_cash`
+- `deposit_release`: source account type must be `restricted_cash`
+
+## Step 3 — Write Transaction
+
 ```sh
-curl -s -X POST "$NOMAD_API_BASE_URL/api/v1/transactions/confirm-extraction" \
+curl -s -X POST "https://ledger.sainwellx.xyz/api/v1/transactions" \
   -H "Authorization: Bearer $NOMAD_API_TOKEN" \
   -H "Content-Type: application/json" \
-  -d '{"extraction_id": <id>, "overrides": {"category_l1": "Food", "account_from_id": 1}}'
+  -d '{
+    "date": "2026-03-21",
+    "type": "expense",
+    "amount_original": 120,
+    "currency_original": "THB",
+    "category_l1": "Lifestyle",
+    "category_l2": "Dining",
+    "account_from_id": 8,
+    "note": "7-Eleven",
+    "tags": ["food", "bangkok"]
+  }'
 ```
 
-## Cancel
-
-No API call needed. Just inform the user that no transaction was written.
+Notes:
+- `fx_rate` and `amount_base` are optional. Usually omit them and let backend auto-fill.
+- On success, API returns `201` and the created transaction object.
 
 ## Hard Rules
 
-- If `draft.confidence >= 0.85`, may auto-confirm without asking (skip the confirmation prompt).
-- If confidence is lower, show draft and ask for confirmation before writing.
+- Do not call parse endpoints from this skill.
+- Treat local parser output as draft input only; still run request-shape validation.
+- If local confidence `< 0.85`, require explicit user confirmation before write.
 - Never write on cancel.
-- Always show the full draft before writing (even when auto-confirming, display the result).
-- If confirm returns a validation error, show the error and ask for corrected values.
+- On `400` validation errors, fetch accounts/categories and retry with corrected IDs/category pair.
