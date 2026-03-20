@@ -3574,14 +3574,15 @@ function renderAccountComposition(dashboard) {
       const color = palette[index % palette.length];
       const label = row.name || row.type || "Account";
       let amountStr;
+      const fmt = (n) => new Intl.NumberFormat(undefined, { maximumFractionDigits: 0 }).format(n);
       if (row.account_id === "other") {
         const base = dashboard.base_currency || state.settings?.base_currency || "USD";
-        amountStr = `${formatMoney(row.amount_base)} ${base}`;
+        amountStr = `${fmt(row.amount_base)} ${base}`;
       } else if (row.currency && row.balance !== undefined) {
-        amountStr = `${formatMoney(row.balance)} ${row.currency}`;
+        amountStr = `${fmt(row.balance)} ${row.currency}`;
       } else {
         const base = dashboard.base_currency || state.settings?.base_currency || "USD";
-        amountStr = `${formatMoney(row.amount_base)} ${base}`;
+        amountStr = `${fmt(row.amount_base)} ${base}`;
       }
       return `<span class="hero-legend-item"><span class="hero-legend-dot" style="background:${color};"></span>${escapeHtml(label)} · ${amountStr}</span>`;
     })
