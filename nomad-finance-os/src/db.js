@@ -16,6 +16,7 @@ function runMigrations(db) {
   ensureColumn(db, "users", "email", "TEXT");
   ensureColumn(db, "accounts", "opening_balance", "NUMERIC NOT NULL DEFAULT 0");
   ensureColumn(db, "user_settings", "ui_language", "TEXT NOT NULL DEFAULT 'en'");
+  ensureColumn(db, "user_settings", "theme", "TEXT NOT NULL DEFAULT 'system'");
   ensureColumn(db, "user_settings", "currency_display_mode", "TEXT NOT NULL DEFAULT 'code'");
   ensureColumn(db, "budgets", "budget_currency", "TEXT");
   ensureColumn(db, "yearly_budgets", "budget_currency", "TEXT");
@@ -253,8 +254,8 @@ function ensureUserAndSeedDefaults(db, userId) {
   db.prepare("INSERT OR IGNORE INTO users (id) VALUES (?)").run(userId);
   db.prepare(
     `
-      INSERT OR IGNORE INTO user_settings (user_id, base_currency, timezone, ui_language, currency_display_mode)
-      VALUES (?, 'USD', 'UTC', 'en', 'code')
+      INSERT OR IGNORE INTO user_settings (user_id, base_currency, timezone, ui_language, theme, currency_display_mode)
+      VALUES (?, 'USD', 'UTC', 'en', 'system', 'code')
     `
   ).run(userId);
 

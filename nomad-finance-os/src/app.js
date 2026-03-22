@@ -483,6 +483,7 @@ function createApp(db) {
       base_currency: z.string().min(3).max(8).optional(),
       timezone: z.string().min(2).max(100).optional(),
       ui_language: z.enum(["en", "zh"]).optional(),
+      theme: z.enum(["system", "light", "dark", "aurora"]).optional(),
       currency_display_mode: z.enum(["code", "symbol"]).optional()
     });
     const parsed = schema.safeParse(req.body);
@@ -508,14 +509,15 @@ function createApp(db) {
     }
     const timezone = payload.timezone || current.timezone;
     const uiLanguage = payload.ui_language || current.ui_language;
+    const theme = payload.theme || current.theme;
     const currencyDisplayMode = payload.currency_display_mode || current.currency_display_mode;
     db.prepare(
       `
         UPDATE user_settings
-        SET base_currency = ?, timezone = ?, ui_language = ?, currency_display_mode = ?, updated_at = CURRENT_TIMESTAMP
+        SET base_currency = ?, timezone = ?, ui_language = ?, theme = ?, currency_display_mode = ?, updated_at = CURRENT_TIMESTAMP
         WHERE user_id = ?
       `
-    ).run(baseCurrency, timezone, uiLanguage, currencyDisplayMode, req.userId);
+    ).run(baseCurrency, timezone, uiLanguage, theme, currencyDisplayMode, req.userId);
     res.json(getUserSettings(db, req.userId));
   });
 
@@ -1788,7 +1790,7 @@ function createApp(db) {
 function getUserSettings(db, userId) {
   const row = db
     .prepare(
-      "SELECT user_id, base_currency, timezone, ui_language, currency_display_mode FROM user_settings WHERE user_id = ?"
+      "SELECT user_id, base_currency, timezone, ui_language, theme, currency_display_mode FROM user_settings WHERE user_id = ?"
     )
     .get(userId);
   if (!row) {
@@ -1801,6 +1803,9 @@ function getUserSettings(db, userId) {
     base_currency: SUPPORTED_CURRENCIES.includes(normalizedBase) ? normalizedBase : "USD",
     timezone: row.timezone || "UTC",
     ui_language: row.ui_language === "zh" ? "zh" : "en",
+    theme: ["system", "light", "dark", "aurora"].includes(String(row.theme || "system"))
+      ? String(row.theme)
+      : "system",
     currency_display_mode: CURRENCY_DISPLAY_MODES.has(String(row.currency_display_mode || "code"))
       ? String(row.currency_display_mode)
       : "code"

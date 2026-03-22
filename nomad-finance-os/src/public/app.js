@@ -58,6 +58,7 @@ const state = {
     l1: {},
     l2: {}
   },
+  widgetsOpenedFromDashboard: false,
   quickPreferences: {
     expense: {
       account_from_id: "",
@@ -79,6 +80,7 @@ const state = {
 const UI_CURRENCIES = new Set(["CNY", "EUR", "THB", "USD", "JPY", "KRW"]);
 const UI_LANGUAGES = new Set(["en", "zh"]);
 const UI_CURRENCY_DISPLAY_MODES = new Set(["code", "symbol"]);
+const UI_THEMES = new Set(["system", "light", "dark", "aurora"]);
 const CURRENCY_SYMBOL_MAP = {
   USD: "$",
   CNY: "¥",
@@ -254,6 +256,11 @@ const I18N = {
     currencyDisplay: "Currency Display",
     currencyDisplayCode: "Code (USD)",
     currencyDisplaySymbol: "Symbol ($)",
+    theme: "Theme",
+    themeSystem: "System",
+    themeLight: "Light",
+    themeDark: "Dark",
+    themeAurora: "Aurora",
     timezone: "Timezone",
     saveSettings: "Save Settings",
     general: "General",
@@ -564,6 +571,11 @@ const I18N = {
     currencyDisplay: "货币显示",
     currencyDisplayCode: "代码（USD）",
     currencyDisplaySymbol: "符号（$）",
+    theme: "主题",
+    themeSystem: "跟随系统",
+    themeLight: "浅色",
+    themeDark: "深色",
+    themeAurora: "极光渐变",
     timezone: "时区",
     saveSettings: "保存设置",
     general: "通用",
@@ -788,6 +800,7 @@ const MONEY_FORMATTER = new Intl.NumberFormat(undefined, {
 let quickEntryLimitReqSeq = 0;
 let authResendTimer = null;
 let topbarCompactRaf = 0;
+const systemThemeMedia = window.matchMedia ? window.matchMedia("(prefers-color-scheme: dark)") : null;
 
 const $ = (selector) => document.querySelector(selector);
 
@@ -809,6 +822,7 @@ document.addEventListener("DOMContentLoaded", () => {
   state.month = new Date().toISOString().slice(0, 7);
   $("#monthInput").value = state.month;
   updateTopbarMonthDisplay(state.month);
+  applyTheme("system");
   loadQuickEntryPreferences();
   bindUI();
   initializeDebugCapture();
@@ -1503,6 +1517,9 @@ function closeSheet(id) {
   if (!node) return;
   node.classList.add("hidden");
   node.setAttribute("aria-hidden", "true");
+  if (id === "settingsSheet") {
+    state.widgetsOpenedFromDashboard = false;
+  }
   if (id === "transactionDetailSheet") {
     state.detailTransactionId = null;
   }
@@ -2300,6 +2317,7 @@ async function loadSettings() {
     base_currency: "USD",
     timezone: "UTC",
     ui_language: "en",
+    theme: "system",
     currency_display_mode: "code"
   };
 
@@ -2323,21 +2341,26 @@ async function loadSettings() {
   const uiLanguage = ensureUILanguage(state.settings.ui_language || "en");
   state.settings.ui_language = uiLanguage;
   const uiBase = ensureUICurrency(state.settings.base_currency || "USD");
+  const uiTheme = ensureUITheme(state.settings.theme || "system");
+  state.settings.theme = uiTheme;
   const currencyDisplayMode = ensureCurrencyDisplayMode(state.settings.currency_display_mode || "code");
   state.settings.currency_display_mode = currencyDisplayMode;
   const settingsForm = $("#settingsForm");
   if (settingsForm instanceof HTMLFormElement) {
     const formLanguage = settingsForm.querySelector("[name=ui_language]");
     const formBase = settingsForm.querySelector("[name=base_currency]");
+    const formTheme = settingsForm.querySelector("[name=theme]");
     const formCurrencyDisplay = settingsForm.querySelector("[name=currency_display_mode]");
     const formTimezone = settingsForm.querySelector("[name=timezone]");
     if (formLanguage) formLanguage.value = uiLanguage;
     if (formBase) formBase.value = uiBase;
+    if (formTheme) formTheme.value = uiTheme;
     if (formCurrencyDisplay) formCurrencyDisplay.value = currencyDisplayMode;
     if (formTimezone) formTimezone.value = state.settings.timezone || "UTC";
   }
   $("#quickSettingsForm [name=ui_language]").value = uiLanguage;
   $("#quickSettingsForm [name=base_currency]").value = uiBase;
+  $("#quickSettingsForm [name=theme]").value = uiTheme;
   $("#quickSettingsForm [name=currency_display_mode]").value = currencyDisplayMode;
   $("#quickSettingsForm [name=timezone]").value = state.settings.timezone || "UTC";
   const quickUserIdInput = $("#quickSettingsForm [name=user_id]");
@@ -2367,6 +2390,7 @@ async function loadSettings() {
   syncDevBypassVisibility();
   applyAdvancedVisibility();
   renderDebugPanel();
+  applyTheme(uiTheme);
   applyI18n();
 }
 
@@ -3657,6 +3681,7 @@ async function submitSettingsForm(event) {
         base_currency: String(fd.get("base_currency")).toUpperCase(),
         timezone: fd.get("timezone"),
         ui_language: ensureUILanguage(fd.get("ui_language")),
+        theme: ensureUITheme(fd.get("theme")),
         currency_display_mode: ensureCurrencyDisplayMode(fd.get("currency_display_mode"))
       })
     });
@@ -3689,6 +3714,7 @@ async function submitQuickSettingsForm(event) {
         base_currency: String(fd.get("base_currency") || "USD").toUpperCase(),
         timezone: fd.get("timezone") || "UTC",
         ui_language: ensureUILanguage(fd.get("ui_language")),
+        theme: ensureUITheme(fd.get("theme")),
         currency_display_mode: ensureCurrencyDisplayMode(fd.get("currency_display_mode"))
       })
     });
@@ -5399,6 +5425,37 @@ function ensureCurrencyDisplayMode(value) {
   return UI_CURRENCY_DISPLAY_MODES.has(mode) ? mode : "code";
 }
 
+function ensureUITheme(value) {
+  const mode = String(value || "system").toLowerCase();
+  return UI_THEMES.has(mode) ? mode : "system";
+}
+
+function resolveThemeMode(themeValue) {
+  const mode = ensureUITheme(themeValue);
+  if (mode === "aurora") return "aurora";
+  if (mode === "dark" || mode === "light") return mode;
+  return systemThemeMedia?.matches ? "dark" : "light";
+}
+
+function applyTheme(themeValue = state.settings?.theme || "system") {
+  const selected = ensureUITheme(themeValue);
+  const resolved = resolveThemeMode(selected);
+  document.documentElement.setAttribute("data-theme", resolved);
+  document.documentElement.setAttribute("data-theme-preference", selected);
+}
+
+if (systemThemeMedia) {
+  const handleSystemThemeChange = () => {
+    if (ensureUITheme(state.settings?.theme || "system") !== "system") return;
+    applyTheme("system");
+  };
+  if (typeof systemThemeMedia.addEventListener === "function") {
+    systemThemeMedia.addEventListener("change", handleSystemThemeChange);
+  } else if (typeof systemThemeMedia.addListener === "function") {
+    systemThemeMedia.addListener(handleSystemThemeChange);
+  }
+}
+
 function t(key, vars = {}) {
   const lang = ensureUILanguage(state.settings?.ui_language || "en");
   const template = I18N[lang]?.[key] ?? I18N.en[key] ?? key;
@@ -5515,6 +5572,11 @@ function applyI18n() {
   setText("quickSettingsCurrencyDisplayLabel", t("currencyDisplay"));
   setText("quickSettingsCurrencyDisplayCodeOption", t("currencyDisplayCode"));
   setText("quickSettingsCurrencyDisplaySymbolOption", t("currencyDisplaySymbol"));
+  setText("quickSettingsThemeLabel", t("theme"));
+  setText("quickSettingsThemeSystemOption", t("themeSystem"));
+  setText("quickSettingsThemeLightOption", t("themeLight"));
+  setText("quickSettingsThemeDarkOption", t("themeDark"));
+  setText("quickSettingsThemeAuroraOption", t("themeAurora"));
   setText("quickSettingsTimezoneLabel", t("timezone"));
   setText("quickSettingsAdvancedLabel", t("advancedInsights"));
   setText("settingsAdvancedPageTitle", t("dashboardWidgets"));
@@ -6050,18 +6112,33 @@ document.addEventListener("DOMContentLoaded", () => {
   if (backFromGeneral) backFromGeneral.addEventListener("click", () => showSettingsPage("settingsPageMain", "back"));
 
   const openWidgets = document.getElementById("settingsOpenWidgets");
-  if (openWidgets) openWidgets.addEventListener("click", () => showSettingsPage("settingsPageWidgets", "forward"));
+  if (openWidgets) {
+    openWidgets.addEventListener("click", () => {
+      state.widgetsOpenedFromDashboard = false;
+      showSettingsPage("settingsPageWidgets", "forward");
+    });
+  }
 
   const dashWidgetsEditBtn = document.getElementById("dashWidgetsEditBtn");
   if (dashWidgetsEditBtn) {
     dashWidgetsEditBtn.addEventListener("click", () => {
       openSheet("settingsSheet");
+      state.widgetsOpenedFromDashboard = true;
       showSettingsPage("settingsPageWidgets", "forward");
     });
   }
 
   const backFromWidgets = document.getElementById("settingsBackFromWidgets");
-  if (backFromWidgets) backFromWidgets.addEventListener("click", () => showSettingsPage("settingsPageMain", "back"));
+  if (backFromWidgets) {
+    backFromWidgets.addEventListener("click", () => {
+      if (state.widgetsOpenedFromDashboard) {
+        state.widgetsOpenedFromDashboard = false;
+        closeSheet("settingsSheet");
+        return;
+      }
+      showSettingsPage("settingsPageMain", "back");
+    });
+  }
 
   const navMap = {
     settingsLinkAccounts:   "accountsPanel",

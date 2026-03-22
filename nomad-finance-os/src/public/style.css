@@ -15,6 +15,283 @@
   --safe-right: env(safe-area-inset-right, 0px);
   --safe-bottom: env(safe-area-inset-bottom, 0px);
   --safe-left: env(safe-area-inset-left, 0px);
+  --bg-spot-1: rgba(142, 163, 182, 0.26);
+  --bg-spot-2: rgba(79, 130, 156, 0.16);
+  --topbar-pill-h: 36px;
+  color-scheme: light;
+}
+
+:root[data-theme="dark"] {
+  --bg: #0f1721;
+  --bg-2: #162230;
+  --paper: #1a2836;
+  --ink: #e9f0f6;
+  --ink-soft: #9aafc2;
+  --line: #2e4253;
+  --accent: #3db9b3;
+  --accent-ink: #081218;
+  --accent-2: #8eabc0;
+  --danger: #e89991;
+  --bg-spot-1: rgba(144, 147, 153, 0.16);
+  --bg-spot-2: rgba(90, 93, 98, 0.11);
+  color-scheme: dark;
+}
+
+:root[data-theme="aurora"] {
+  --bg: #070d0d;
+  --bg-2: #0c1514;
+  --paper: #111d1b;
+  --ink: #ecf6df;
+  --ink-soft: #9bb29d;
+  --line: #30463b;
+  --accent: #b5f44b;
+  --accent-ink: #101810;
+  --accent-2: #8fc28f;
+  --danger: #ff9b83;
+  --bg-spot-1: rgba(191, 255, 77, 0.26);
+  --bg-spot-2: rgba(118, 248, 185, 0.18);
+  color-scheme: dark;
+}
+
+:root[data-theme="aurora"] .card,
+:root[data-theme="aurora"] .settings-group {
+  border: 1px solid rgba(173, 255, 121, 0.24);
+  background:
+    radial-gradient(circle at 88% 14%, rgba(207, 255, 88, 0.24), transparent 46%),
+    radial-gradient(circle at 4% 100%, rgba(104, 210, 144, 0.12), transparent 52%),
+    linear-gradient(165deg, rgba(66, 102, 62, 0.18) 0%, rgba(17, 29, 27, 0.98) 56%),
+    var(--paper);
+  box-shadow: 0 8px 26px rgba(0, 0, 0, 0.34), 0 0 0 1px rgba(171, 255, 121, 0.08) inset;
+}
+
+:root[data-theme="aurora"] .topbar-month-display,
+:root[data-theme="aurora"] .topbar-icon {
+  border-color: rgba(185, 255, 112, 0.32);
+  color: var(--ink);
+  background:
+    radial-gradient(circle at 85% 0%, rgba(214, 255, 92, 0.22), transparent 60%),
+    linear-gradient(
+      to bottom,
+      rgba(47, 78, 56, 0.34) 0%,
+      rgba(22, 36, 32, 0.62) 100%
+    );
+  box-shadow: inset 0 1px 0 rgba(207, 255, 155, 0.2), 0 8px 20px rgba(0, 0, 0, 0.24);
+}
+
+:root[data-theme="aurora"] .topbar-base select {
+  border-color: rgba(185, 255, 112, 0.32);
+  color: var(--ink);
+  background:
+    radial-gradient(circle at 85% 0%, rgba(214, 255, 92, 0.22), transparent 60%),
+    linear-gradient(
+      to bottom,
+      rgba(47, 78, 56, 0.34) 0%,
+      rgba(22, 36, 32, 0.62) 100%
+    ),
+    linear-gradient(45deg, transparent 50%, var(--ink-soft) 50%),
+    linear-gradient(135deg, var(--ink-soft) 50%, transparent 50%);
+  background-position:
+    0 0,
+    0 0,
+    calc(100% - 10px) 50%,
+    calc(100% - 6px) 50%;
+  background-size: 100% 100%, 100% 100%, 4px 4px, 4px 4px;
+  background-repeat: no-repeat;
+  box-shadow: inset 0 1px 0 rgba(207, 255, 155, 0.2), 0 8px 20px rgba(0, 0, 0, 0.24);
+}
+
+:root[data-theme="aurora"] .hero-subcard {
+  background: linear-gradient(165deg, rgba(58, 84, 73, 0.42), rgba(24, 38, 34, 0.92));
+  border: 1px solid rgba(165, 235, 130, 0.22);
+  box-shadow: inset 0 1px 0 rgba(195, 255, 166, 0.1);
+}
+
+:root[data-theme="aurora"] .hero-subcard.secondary {
+  background: linear-gradient(165deg, rgba(94, 132, 94, 0.34), rgba(28, 46, 40, 0.95));
+  border-color: rgba(178, 247, 126, 0.26);
+}
+
+:root[data-theme="aurora"] .hero-subcard .k {
+  color: #b8cdb6;
+}
+
+:root[data-theme="aurora"] .hero-subcard .v {
+  color: #eef8e2;
+}
+
+:root[data-theme="aurora"] #recentCompareCard {
+  background: linear-gradient(165deg, rgba(19, 33, 31, 0.96), rgba(32, 47, 54, 0.94));
+  border: 1px solid rgba(168, 238, 129, 0.2);
+  box-shadow: 0 8px 22px rgba(0, 0, 0, 0.32);
+}
+
+:root[data-theme="aurora"] #recentCompareCard .section-title-btn {
+  color: #4bd3c8;
+}
+
+:root[data-theme="aurora"] #recentExpensesCard .section-title-btn {
+  color: #4bd3c8;
+}
+
+:root[data-theme="aurora"] .recent-compare-summary,
+:root[data-theme="aurora"] .recent-compare-state {
+  color: #edf6ea;
+}
+
+:root[data-theme="aurora"] .recent-compare-range,
+:root[data-theme="aurora"] .recent-compare-axis {
+  color: #a9bea7;
+}
+
+:root[data-theme="aurora"] .recent-compare-hero {
+  border-top-color: rgba(174, 233, 155, 0.24);
+}
+
+:root[data-theme="aurora"] .recent-compare-chart-shell::before {
+  background: rgba(176, 200, 209, 0.13);
+}
+
+:root[data-theme="aurora"] .recent-compare-chart-shell::after {
+  background: rgba(75, 211, 200, 0.16);
+}
+
+:root[data-theme="aurora"] .recent-compare-line {
+  stroke: #45c8be;
+}
+
+:root[data-theme="aurora"] .recent-compare-dot {
+  fill: #e8f9f1;
+  stroke: #45c8be;
+}
+
+:root[data-theme="aurora"] .recent-compare-grid {
+  stroke: rgba(157, 186, 174, 0.22);
+}
+
+:root[data-theme="aurora"] .recent-compare-line-prev {
+  stroke: rgba(187, 215, 204, 0.35);
+}
+
+:root[data-theme="dark"] .hero-subcard {
+  background: linear-gradient(165deg, rgba(48, 65, 81, 0.58), rgba(30, 44, 58, 0.94));
+  border: 1px solid rgba(142, 171, 193, 0.28);
+  box-shadow: inset 0 1px 0 rgba(225, 241, 255, 0.08);
+}
+
+:root[data-theme="dark"] .hero-subcard.secondary {
+  background: linear-gradient(165deg, rgba(57, 82, 102, 0.52), rgba(34, 52, 68, 0.96));
+  border-color: rgba(157, 187, 210, 0.32);
+}
+
+:root[data-theme="dark"] .hero-subcard .k {
+  color: #b2c3d4;
+}
+
+:root[data-theme="dark"] .hero-subcard .v {
+  color: #edf5fb;
+}
+
+:root[data-theme="dark"] #recentCompareCard {
+  background: linear-gradient(165deg, rgba(24, 37, 49, 0.98), rgba(36, 53, 68, 0.96));
+  border: 1px solid rgba(138, 168, 191, 0.24);
+  box-shadow: 0 8px 22px rgba(0, 0, 0, 0.32);
+}
+
+:root[data-theme="dark"] #recentCompareCard .section-title-btn,
+:root[data-theme="dark"] #recentExpensesCard .section-title-btn {
+  color: #58cec7;
+}
+
+:root[data-theme="dark"] .recent-compare-summary,
+:root[data-theme="dark"] .recent-compare-state {
+  color: #eaf2f8;
+}
+
+:root[data-theme="dark"] .recent-compare-range,
+:root[data-theme="dark"] .recent-compare-axis {
+  color: #a8bacb;
+}
+
+:root[data-theme="dark"] .recent-compare-hero {
+  border-top-color: rgba(160, 186, 206, 0.24);
+}
+
+:root[data-theme="dark"] .recent-compare-chart-shell::before {
+  background: rgba(142, 161, 178, 0.16);
+}
+
+:root[data-theme="dark"] .recent-compare-chart-shell::after {
+  background: rgba(61, 185, 179, 0.16);
+}
+
+:root[data-theme="dark"] .recent-compare-dot {
+  fill: #e6f4f4;
+}
+
+:root[data-theme="dark"] .recent-compare-grid {
+  stroke: rgba(145, 164, 180, 0.24);
+}
+
+:root[data-theme="dark"] .recent-compare-line-prev {
+  stroke: rgba(164, 184, 201, 0.38);
+}
+
+:root[data-theme="dark"] .topbar-month-display,
+:root[data-theme="dark"] .topbar-icon {
+  border-color: rgba(171, 177, 187, 0.34);
+  color: #eaf2f8;
+  background: linear-gradient(
+    to bottom,
+    rgba(120, 126, 136, 0.34) 0%,
+    rgba(82, 88, 97, 0.27) 52%,
+    rgba(52, 56, 62, 0.24) 100%
+  );
+  box-shadow: inset 0 1px 0 rgba(219, 238, 252, 0.16), 0 6px 16px rgba(5, 12, 18, 0.22);
+}
+
+:root[data-theme="dark"] .topbar-base select {
+  border-color: rgba(171, 177, 187, 0.34);
+  color: #eaf2f8;
+  background:
+    linear-gradient(
+      to bottom,
+      rgba(120, 126, 136, 0.34) 0%,
+      rgba(82, 88, 97, 0.27) 52%,
+      rgba(52, 56, 62, 0.24) 100%
+    ),
+    linear-gradient(45deg, transparent 50%, #b9c1cb 50%),
+    linear-gradient(135deg, #b9c1cb 50%, transparent 50%);
+  background-position:
+    0 0,
+    calc(100% - 10px) 50%,
+    calc(100% - 6px) 50%;
+  background-size: 100% 100%, 4px 4px, 4px 4px;
+  background-repeat: no-repeat;
+  box-shadow: inset 0 1px 0 rgba(219, 238, 252, 0.16), 0 6px 16px rgba(5, 12, 18, 0.22);
+}
+
+:root[data-theme="dark"] .topbar-month:hover .topbar-month-display,
+:root[data-theme="dark"] .topbar-base select:hover,
+:root[data-theme="dark"] .topbar-icon:hover {
+  filter: brightness(1.015);
+}
+
+:root[data-theme="dark"] .topbar-month:focus-within .topbar-month-display {
+  border-color: rgba(192, 200, 212, 0.45);
+  box-shadow: inset 0 1px 0 rgba(227, 241, 255, 0.22), 0 0 0 2px rgba(131, 138, 148, 0.18);
+}
+
+:root[data-theme="dark"] body {
+  background:
+    radial-gradient(rgba(255, 255, 255, 0.075) 0.65px, transparent 0.65px),
+    radial-gradient(rgba(0, 0, 0, 0.24) 0.6px, transparent 0.6px),
+    radial-gradient(circle at 14% -10%, rgba(180, 184, 191, 0.08), transparent 58%),
+    radial-gradient(circle at 88% 0%, rgba(126, 130, 137, 0.07), transparent 60%),
+    linear-gradient(180deg, #2b2c2f 0%, #1a1b1e 54%, #09090a 78%, #000000 100%),
+    #000000;
+  background-size: 3px 3px, 5px 5px, 100% 180px, 100% 180px, 100% 180px, 100% 100%;
+  background-position: 0 0, 1px 2px, 0 0, 0 0, 0 0, 0 0;
+  background-repeat: repeat, repeat, no-repeat, no-repeat, no-repeat, no-repeat;
 }
 
 * {
@@ -29,8 +306,8 @@ body {
   font-family: "Space Grotesk", sans-serif;
   color: var(--ink);
   background:
-    radial-gradient(circle at 8% -10%, rgba(142, 163, 182, 0.26), transparent 34%),
-    radial-gradient(circle at 96% 0%, rgba(79, 130, 156, 0.16), transparent 36%),
+    radial-gradient(circle at 8% -10%, var(--bg-spot-1), transparent 34%),
+    radial-gradient(circle at 96% 0%, var(--bg-spot-2), transparent 36%),
     var(--bg);
 }
 
@@ -196,7 +473,7 @@ body.auth-required {
 
 .topbar-month {
   position: relative;
-  min-width: 132px;
+  min-width: 126px;
   margin-left: auto;
 }
 
@@ -205,10 +482,12 @@ body.auth-required {
   align-items: center;
   justify-content: center;
   width: 100%;
-  min-height: 38px;
-  padding: 6px 14px;
+  height: var(--topbar-pill-h);
+  min-height: var(--topbar-pill-h);
+  padding: 0 14px;
+  line-height: 1;
   font-weight: 700;
-  font-size: 1rem;
+  font-size: 0.88rem;
   letter-spacing: -0.01em;
   border: 1px solid rgba(255, 255, 255, 0.42);
   border-radius: 999px;
@@ -253,9 +532,11 @@ body.auth-required {
 
 .topbar-base select {
   width: auto;
-  min-width: 92px;
-  min-height: unset;
-  padding: 6px 24px 6px 10px;
+  min-width: 88px;
+  height: var(--topbar-pill-h);
+  min-height: var(--topbar-pill-h);
+  padding: 0 24px 0 10px;
+  line-height: 1;
   font-weight: 600;
   font-size: 0.88rem;
   text-align: center;
@@ -371,8 +652,8 @@ textarea {
 
 .topbar-icon {
   justify-self: start;
-  width: 38px;
-  height: 38px;
+  width: var(--topbar-pill-h);
+  height: var(--topbar-pill-h);
   border-radius: 999px;
   border: 1px solid rgba(255, 255, 255, 0.42);
   background: linear-gradient(
@@ -969,6 +1250,119 @@ h3 {
 
 #recentExpensesCard .section-title-btn {
   color: #172333;
+}
+
+/* Dashboard lower cards */
+#dashboardSortable > .dashboard-card {
+  overflow: visible;
+  border: none;
+  background: var(--paper);
+  box-shadow: 0 2px 8px rgba(49, 66, 80,.07), 0 8px 28px rgba(49, 66, 80,.06);
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none;
+}
+
+#dashboardSortable > .dashboard-card::before {
+  display: none;
+}
+
+#dashboardSortable > .dashboard-card > * {
+  position: relative;
+  z-index: 1;
+}
+
+#todayExpensesCard {
+  --card-frost: rgba(255, 201, 230, 0.45);
+}
+
+#recentCompareCard {
+  --card-frost: rgba(191, 248, 233, 0.46);
+}
+
+#dashboardSortable > [data-sort-id="budgetPlanCard"] {
+  --card-frost: rgba(227, 255, 188, 0.48);
+}
+
+#recentExpensesCard {
+  --card-frost: rgba(200, 222, 255, 0.46);
+}
+
+#dashboardAccountsCard {
+  --card-frost: rgba(255, 221, 180, 0.47);
+}
+
+#cashFlowCard {
+  --card-frost: rgba(255, 206, 183, 0.47);
+}
+
+#trendCard {
+  --card-frost: rgba(219, 201, 255, 0.45);
+}
+
+#riskCard {
+  --card-frost: rgba(198, 245, 194, 0.46);
+}
+
+:root[data-theme="dark"] #dashboardSortable > .dashboard-card,
+:root[data-theme="aurora"] #dashboardSortable > .dashboard-card {
+  overflow: hidden;
+  border: 1px solid rgba(194, 207, 219, 0.24);
+  border-color: rgba(194, 207, 219, 0.24);
+  background-color: var(--card-frost-dark, rgba(41, 56, 71, 0.74));
+  box-shadow: 0 10px 26px rgba(0, 0, 0, 0.28), inset 0 1px 0 rgba(228, 238, 247, 0.14);
+  backdrop-filter: blur(10px) saturate(120%);
+  -webkit-backdrop-filter: blur(10px) saturate(120%);
+}
+
+:root[data-theme="dark"] #dashboardSortable > .dashboard-card::before,
+:root[data-theme="aurora"] #dashboardSortable > .dashboard-card::before {
+  display: block;
+  content: "";
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  pointer-events: none;
+  background: rgba(255, 255, 255, 0.08);
+}
+
+:root[data-theme="dark"] #todayExpensesCard,
+:root[data-theme="aurora"] #todayExpensesCard {
+  --card-frost-dark: rgba(98, 62, 89, 0.72);
+}
+
+:root[data-theme="dark"] #recentCompareCard,
+:root[data-theme="aurora"] #recentCompareCard {
+  --card-frost-dark: rgba(41, 83, 86, 0.74);
+}
+
+:root[data-theme="dark"] #dashboardSortable > [data-sort-id="budgetPlanCard"],
+:root[data-theme="aurora"] #dashboardSortable > [data-sort-id="budgetPlanCard"] {
+  --card-frost-dark: rgba(63, 86, 49, 0.74);
+}
+
+:root[data-theme="dark"] #recentExpensesCard,
+:root[data-theme="aurora"] #recentExpensesCard {
+  --card-frost-dark: rgba(51, 68, 98, 0.75);
+}
+
+:root[data-theme="dark"] #dashboardAccountsCard,
+:root[data-theme="aurora"] #dashboardAccountsCard {
+  --card-frost-dark: rgba(88, 72, 49, 0.74);
+}
+
+:root[data-theme="dark"] #cashFlowCard,
+:root[data-theme="aurora"] #cashFlowCard {
+  --card-frost-dark: rgba(92, 58, 50, 0.74);
+}
+
+:root[data-theme="dark"] #trendCard,
+:root[data-theme="aurora"] #trendCard {
+  --card-frost-dark: rgba(73, 60, 97, 0.75);
+}
+
+:root[data-theme="dark"] #riskCard,
+:root[data-theme="aurora"] #riskCard {
+  --card-frost-dark: rgba(50, 84, 63, 0.74);
 }
 
 .recent-compare-summary {
@@ -3391,9 +3785,17 @@ body.utility-mode #dashboardPanel {
   .panel-add-btn {
     min-height: 44px;
   }
+
+  .topbar-icon {
+    min-height: var(--topbar-pill-h);
+  }
 }
 
 @media (max-width: 430px) {
+  :root {
+    --topbar-pill-h: 32px;
+  }
+
   .topbar {
     padding-left: max(12px, calc(var(--safe-left) + 12px));
     padding-right: max(12px, calc(var(--safe-right) + 12px));
@@ -3404,7 +3806,7 @@ body.utility-mode #dashboardPanel {
   }
 
   .topbar-month {
-    min-width: 118px;
+    min-width: 112px;
   }
 
   .topbar-right {
@@ -3412,19 +3814,18 @@ body.utility-mode #dashboardPanel {
   }
 
   .topbar-month-display {
-    min-height: 34px;
     padding-left: 12px;
     padding-right: 12px;
-    font-size: 0.94rem;
+    font-size: 0.84rem;
   }
 
   .topbar-month input {
-    min-height: 34px;
+    min-height: var(--topbar-pill-h);
   }
 
   .topbar-base select {
-    min-width: 82px;
-    padding: 6px 22px 6px 8px;
+    min-width: 78px;
+    padding: 0 22px 0 8px;
     font-size: 0.84rem;
   }
 
