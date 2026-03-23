@@ -82,9 +82,9 @@ const UI_LANGUAGES = new Set(["en", "zh"]);
 const UI_CURRENCY_DISPLAY_MODES = new Set(["code", "symbol"]);
 const UI_THEMES = new Set(["system", "light", "dark", "aurora"]);
 const THEME_CHROME_COLOR = Object.freeze({
-  light: "#f0f3f5",
+  light: "#c9d7e3",
   dark: "#2b2c2f",
-  aurora: "#070d0d"
+  aurora: "#0c1514"
 });
 const CURRENCY_SYMBOL_MAP = {
   USD: "$",
@@ -402,6 +402,22 @@ const I18N = {
     recentCompareSummaryDown: "Spent {amount} {currency} in the past 7 days, down {pct} vs last week.",
     recentCompareSummaryUp: "Spent {amount} {currency} in the past 7 days, up {pct} vs last week.",
     recentCompareSummaryFlat: "Spent {amount} {currency} in the past 7 days, in line with last week.",
+    recentCompareSummaryEarlyNoBaseline:
+      "Spent {amount} {currency} so far this week. No baseline for last week's {weekday}.",
+    recentCompareSummaryEarlyDown:
+      "Spent {amount} {currency} so far this week. Today's spending is down {pct} vs last week's {weekday}.",
+    recentCompareSummaryEarlyUp:
+      "Spent {amount} {currency} so far this week. Today's spending is up {pct} vs last week's {weekday}.",
+    recentCompareSummaryEarlyFlat:
+      "Spent {amount} {currency} so far this week. Today's spending is in line with last week's {weekday}.",
+    recentCompareSummaryAvgDown:
+      "Spent {amount} {currency} so far this week. Daily average is down {pct} vs last week.",
+    recentCompareSummaryAvgUp:
+      "Spent {amount} {currency} so far this week. Daily average is up {pct} vs last week.",
+    recentCompareSummaryAvgFlat:
+      "Spent {amount} {currency} so far this week. Daily average is in line with last week.",
+    recentCompareSummaryAvgInsufficient:
+      "Spent {amount} {currency} so far this week. Need more baseline data before judging trend.",
     recentCompareSummaryInsufficient:
       "Spent {amount} {currency} in the past 7 days. Need more baseline data before judging the trend.",
     recentCompareSummaryNoBaseline: "Spent {amount} {currency} in the past 7 days. No spending last week.",
@@ -716,6 +732,14 @@ const I18N = {
     recentCompareSummaryDown: "过去 7 天共支出 {amount} {currency}，较上周下降 {pct}。",
     recentCompareSummaryUp: "过去 7 天共支出 {amount} {currency}，较上周上升 {pct}。",
     recentCompareSummaryFlat: "过去 7 天共支出 {amount} {currency}，与上周基本持平。",
+    recentCompareSummaryEarlyNoBaseline: "本周截至目前共支出 {amount} {currency}，上周{weekday}无可比样本。",
+    recentCompareSummaryEarlyDown: "本周截至目前共支出 {amount} {currency}，今日较上周{weekday}下降 {pct}。",
+    recentCompareSummaryEarlyUp: "本周截至目前共支出 {amount} {currency}，今日较上周{weekday}上升 {pct}。",
+    recentCompareSummaryEarlyFlat: "本周截至目前共支出 {amount} {currency}，今日与上周{weekday}基本持平。",
+    recentCompareSummaryAvgDown: "本周截至目前共支出 {amount} {currency}，日均较上周下降 {pct}。",
+    recentCompareSummaryAvgUp: "本周截至目前共支出 {amount} {currency}，日均较上周上升 {pct}。",
+    recentCompareSummaryAvgFlat: "本周截至目前共支出 {amount} {currency}，日均与上周基本持平。",
+    recentCompareSummaryAvgInsufficient: "本周截至目前共支出 {amount} {currency}，上周样本不足，先继续观察。",
     recentCompareSummaryInsufficient: "过去 7 天共支出 {amount} {currency}，上周样本不足，先继续观察。",
     recentCompareSummaryNoBaseline: "过去 7 天共支出 {amount} {currency}，上周同期无支出。",
     recentCompareStateQuiet: "平稳",
@@ -3947,7 +3971,12 @@ function renderHeroSummary(dashboard) {
   const runway = dashboard.runway_months;
   const runwayLabel = Number.isFinite(Number(runway)) ? `${Number(runway).toFixed(1)}m` : "∞";
 
-  setText("heroNetWorthValue", `${formatMoney(netWorth)} ${formatCurrencyUnit(base)}`);
+  const heroValueEl = $("#heroNetWorthValue");
+  if (heroValueEl) {
+    heroValueEl.innerHTML = `<span class="hero-value-amount">${escapeHtml(
+      formatMoney(netWorth)
+    )}</span><span class="hero-value-unit">${escapeHtml(formatCurrencyUnit(base))}</span>`;
+  }
   renderAccountComposition(dashboard);
 
   $("#heroSubMetrics").innerHTML = `
@@ -4778,10 +4807,13 @@ function buildRecentCompareModel(rows) {
     });
   }
 
-  const totalCurrent = Number(series.reduce((sum, row) => sum + row.value, 0).toFixed(2));
+  const elapsedDays = Math.min(7, Math.max(1, mondayOffset + 1));
+  const elapsedSeries = series.slice(0, elapsedDays);
+  const totalCurrent = Number(elapsedSeries.reduce((sum, row) => sum + row.value, 0).toFixed(2));
   const totalPrevious = Number(series.reduce((sum, row) => sum + row.previous, 0).toFixed(2));
   const previousDays = series.map((row) => Number(row.previous || 0));
   const previousMean = totalPrevious / series.length;
+  const currentMean = totalCurrent / elapsedDays;
   const previousVariance =
     previousDays.reduce((sum, value) => sum + (value - previousMean) ** 2, 0) / series.length;
   const previousStd = Math.sqrt(previousVariance);
@@ -4790,42 +4822,90 @@ function buildRecentCompareModel(rows) {
   const dailyTolerance = baselineSufficient ? Math.max(previousMean * 0.25, previousStd * 0.9) : 0;
   const upperBoundDaily = baselineSufficient ? previousMean + dailyTolerance : null;
   const lowerBoundDaily = baselineSufficient ? Math.max(0, previousMean - dailyTolerance * 0.7) : null;
-  const upperBoundTotal = baselineSufficient ? upperBoundDaily * series.length : null;
-  const lowerBoundTotal = baselineSufficient ? lowerBoundDaily * series.length : null;
-  const pct = totalPrevious > 0 ? ((totalCurrent - totalPrevious) / totalPrevious) * 100 : null;
-  const pctAbs = pct === null ? null : `${Math.abs(pct).toFixed(1)}%`;
-
   let summary = "";
   let stateLabel = "";
   if (totalCurrent <= 0.0001) {
     summary = t("recentCompareSummaryQuiet");
     stateLabel = t("recentCompareStateQuiet");
-  } else if (!baselineSufficient) {
-    summary = t("recentCompareSummaryInsufficient", {
-      amount: formatMoney(totalCurrent),
-      currency: formatCurrencyUnit(base)
-    });
-    stateLabel = t("recentCompareStateInsufficient");
-  } else if (totalCurrent < (lowerBoundTotal || 0) - 0.0001 && pct !== null) {
-    summary = t("recentCompareSummaryDown", {
-      amount: formatMoney(totalCurrent),
-      currency: formatCurrencyUnit(base),
-      pct: pctAbs
-    });
-    stateLabel = t("recentCompareStateDown");
-  } else if (totalCurrent > (upperBoundTotal || 0) + 0.0001 && pct !== null) {
-    summary = t("recentCompareSummaryUp", {
-      amount: formatMoney(totalCurrent),
-      currency: formatCurrencyUnit(base),
-      pct: pctAbs
-    });
-    stateLabel = t("recentCompareStateUp");
   } else {
-    summary = t("recentCompareSummaryFlat", {
-      amount: formatMoney(totalCurrent),
-      currency: formatCurrencyUnit(base)
-    });
-    stateLabel = t("recentCompareStateFlat");
+    const amountText = formatMoney(totalCurrent);
+    const currencyText = formatCurrencyUnit(base);
+
+    if (elapsedDays < 4) {
+      const todayPoint = elapsedSeries[elapsedSeries.length - 1];
+      const sameDayBaseline = Number(todayPoint?.previous || 0);
+      const sameDayCurrent = Number(todayPoint?.value || 0);
+      const weekdayText = todayPoint?.weekday || t("recentCompareAxisMon");
+
+      if (sameDayBaseline <= 0.0001) {
+        summary = t("recentCompareSummaryEarlyNoBaseline", {
+          amount: amountText,
+          currency: currencyText,
+          weekday: weekdayText
+        });
+        stateLabel = t("recentCompareStateInsufficient");
+      } else {
+        const sameDayTolerance = Math.max(sameDayBaseline * 0.2, dailyTolerance || sameDayBaseline * 0.2);
+        const pct = ((sameDayCurrent - sameDayBaseline) / sameDayBaseline) * 100;
+        const pctAbs = `${Math.abs(pct).toFixed(1)}%`;
+        const lower = Math.max(0, sameDayBaseline - sameDayTolerance);
+        const upper = sameDayBaseline + sameDayTolerance;
+        if (sameDayCurrent < lower - 0.0001) {
+          summary = t("recentCompareSummaryEarlyDown", {
+            amount: amountText,
+            currency: currencyText,
+            weekday: weekdayText,
+            pct: pctAbs
+          });
+          stateLabel = t("recentCompareStateDown");
+        } else if (sameDayCurrent > upper + 0.0001) {
+          summary = t("recentCompareSummaryEarlyUp", {
+            amount: amountText,
+            currency: currencyText,
+            weekday: weekdayText,
+            pct: pctAbs
+          });
+          stateLabel = t("recentCompareStateUp");
+        } else {
+          summary = t("recentCompareSummaryEarlyFlat", {
+            amount: amountText,
+            currency: currencyText,
+            weekday: weekdayText
+          });
+          stateLabel = t("recentCompareStateFlat");
+        }
+      }
+    } else if (!baselineSufficient) {
+      summary = t("recentCompareSummaryAvgInsufficient", {
+        amount: amountText,
+        currency: currencyText
+      });
+      stateLabel = t("recentCompareStateInsufficient");
+    } else {
+      const pct = previousMean > 0 ? ((currentMean - previousMean) / previousMean) * 100 : null;
+      const pctAbs = pct === null ? null : `${Math.abs(pct).toFixed(1)}%`;
+      if (currentMean < (lowerBoundDaily || 0) - 0.0001 && pct !== null) {
+        summary = t("recentCompareSummaryAvgDown", {
+          amount: amountText,
+          currency: currencyText,
+          pct: pctAbs
+        });
+        stateLabel = t("recentCompareStateDown");
+      } else if (currentMean > (upperBoundDaily || 0) + 0.0001 && pct !== null) {
+        summary = t("recentCompareSummaryAvgUp", {
+          amount: amountText,
+          currency: currencyText,
+          pct: pctAbs
+        });
+        stateLabel = t("recentCompareStateUp");
+      } else {
+        summary = t("recentCompareSummaryAvgFlat", {
+          amount: amountText,
+          currency: currencyText
+        });
+        stateLabel = t("recentCompareStateFlat");
+      }
+    }
   }
 
   return {
