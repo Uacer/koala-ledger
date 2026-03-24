@@ -68,6 +68,7 @@ const state = {
     l2: {}
   },
   widgetsOpenedFromDashboard: false,
+  categoryPromptContext: null,
   onboarding: {
     stateLoaded: false,
     completed: false,
@@ -376,7 +377,7 @@ const I18N = {
     quickDateToggle: "Date",
     quickDateYesterday: "Yesterday",
     quickDateDayBefore: "2d ago",
-    quickUnassignedHint: "No account selected. It will be saved to Unassigned Account.",
+    quickUnassignedHint: "No account selected. It will be saved to Default Account.",
     note: "Note",
     tagsLabel: "Tags",
     saveExpense: "Save Expense",
@@ -505,10 +506,9 @@ const I18N = {
     editAccount: "Edit Account",
     saveAccount: "Save Account",
     deleteAccount: "Delete Account",
-    forceDeleteAccount: "Force Delete (with Transactions)",
     accountDeleteConfirm: "Delete this account? This cannot be undone.",
-    accountForceDeleteConfirm:
-      "Force delete this account and all linked transactions ({count})? This cannot be undone.",
+    accountDeleteLinkedConfirm:
+      "This account has {count} linked transactions. Delete the account and all linked transactions? This cannot be undone.",
     accountUpdated: "Account updated",
     accountEditCurrencyLabel: "Currency",
     accountEditBalanceHint: "Changing current balance updates this account's starting point while keeping linked transactions intact.",
@@ -803,7 +803,7 @@ const I18N = {
     quickDateToggle: "日期",
     quickDateYesterday: "昨天",
     quickDateDayBefore: "前天",
-    quickUnassignedHint: "未选择账户，将记入未分配账户。",
+    quickUnassignedHint: "未选择账户，将记入默认账户。",
     note: "备注",
     tagsLabel: "标签",
     saveExpense: "保存支出",
@@ -932,9 +932,8 @@ const I18N = {
     editAccount: "编辑账户",
     saveAccount: "保存账户",
     deleteAccount: "删除账户",
-    forceDeleteAccount: "强制删除（含关联交易）",
     accountDeleteConfirm: "确认删除该账户？删除后不可恢复。",
-    accountForceDeleteConfirm: "强制删除该账户及其关联交易（{count}）？删除后不可恢复。",
+    accountDeleteLinkedConfirm: "该账户关联了 {count} 条交易。是否继续删除账户及其关联交易？删除后不可恢复。",
     accountUpdated: "账户已更新",
     accountEditCurrencyLabel: "币种",
     accountEditBalanceHint: "修改当前余额时，系统会调整这个账户的起始点，但会保留已关联交易。",
@@ -1504,7 +1503,6 @@ function bindUI() {
   }
   $("#transactionEditForm").addEventListener("submit", submitTransactionEditForm);
   $("#accountDeleteBtn").addEventListener("click", deleteCurrentAccount);
-  $("#accountForceDeleteBtn").addEventListener("click", forceDeleteCurrentAccount);
   const transactionDeleteBtn = $("#transactionDeleteBtn");
   if (transactionDeleteBtn) {
     transactionDeleteBtn.addEventListener("click", deleteCurrentTransaction);
@@ -1776,6 +1774,12 @@ function initializeQuickEntryDefaults() {
   updateQuickDateDisplay();
   const budgetMonth = $("#quickBudgetForm [name=month]");
   if (budgetMonth) budgetMonth.value = state.month;
+}
+
+function getActiveBudgetScope() {
+  const yearlyBtn = document.getElementById("budgetToggleYearly");
+  if (yearlyBtn && yearlyBtn.classList.contains("active")) return "yearly";
+  return "monthly";
 }
 
 function canUseCompactTopbar() {
@@ -3168,7 +3172,14 @@ async function loadSettings() {
     if (formBase) formBase.value = uiBase;
     if (formTheme) formTheme.value = uiTheme;
     if (formCurrencyDisplay) formCurrencyDisplay.value = currencyDisplayMode;
-    if (formTimezone) formTimezone.value = state.settings.timezone || "UTC";
+    if (formTimezone instanceof HTMLSelectElement) {
+      const currentTimezone = String(state.settings.timezone || "UTC").trim() || "UTC";
+      const hasOption = Array.from(formTimezone.options).some((option) => option.value === currentTimezone);
+      if (!hasOption) formTimezone.appendChild(new Option(currentTimezone, currentTimezone));
+      formTimezone.value = currentTimezone;
+    } else if (formTimezone) {
+      formTimezone.value = state.settings.timezone || "UTC";
+    }
   }
   const quickCountrySelect = $("#quickSettingsForm [name=living_country_code]");
   if (quickCountrySelect instanceof HTMLSelectElement) {
@@ -3181,7 +3192,15 @@ async function loadSettings() {
   $("#quickSettingsForm [name=base_currency]").value = uiBase;
   $("#quickSettingsForm [name=theme]").value = uiTheme;
   $("#quickSettingsForm [name=currency_display_mode]").value = currencyDisplayMode;
-  $("#quickSettingsForm [name=timezone]").value = state.settings.timezone || "UTC";
+  const quickTimezoneSelect = $("#quickSettingsForm [name=timezone]");
+  if (quickTimezoneSelect instanceof HTMLSelectElement) {
+    const currentTimezone = String(state.settings.timezone || "UTC").trim() || "UTC";
+    const hasOption = Array.from(quickTimezoneSelect.options).some((option) => option.value === currentTimezone);
+    if (!hasOption) quickTimezoneSelect.appendChild(new Option(currentTimezone, currentTimezone));
+    quickTimezoneSelect.value = currentTimezone;
+  } else if (quickTimezoneSelect) {
+    quickTimezoneSelect.value = state.settings.timezone || "UTC";
+  }
   const quickUserIdInput = $("#quickSettingsForm [name=user_id]");
   if (quickUserIdInput) quickUserIdInput.value = String(state.userId);
   const topBaseCurrencySelect = $("#topBaseCurrencySelect");
@@ -4299,10 +4318,11 @@ async function createL2CategoryInline(l1Name) {
   openCategoryPrompt("l2", l1Name);
 }
 
-function openCategoryPrompt(mode, l1Name = "") {
+function openCategoryPrompt(mode, l1Name = "", context = null) {
   const form = $("#categoryPromptForm");
   if (!(form instanceof HTMLFormElement)) return;
   const safeMode = mode === "l2" || mode === "edit_l1" ? mode : "l1";
+  state.categoryPromptContext = context;
   form.reset();
   form.elements.mode.value = safeMode;
   form.elements.l1_name.value = String(l1Name || "").trim();
@@ -4380,9 +4400,10 @@ async function submitCategoryPromptForm(event) {
     const ok = await updateL1CategoryRecord(oldName, name, { emoji });
     if (!ok) return;
   } else {
-    const ok = await createL1CategoryRecord(name, null, { emoji });
+    const ok = await createL1CategoryRecord(name, null, { emoji, ...(state.categoryPromptContext || {}) });
     if (!ok) return;
   }
+  state.categoryPromptContext = null;
   closeSheet("categoryPromptSheet");
 }
 
@@ -4434,6 +4455,14 @@ async function createL1CategoryRecord(name, formToReset = null, options = {}) {
     showToast(t("categoryL1Updated"));
     try {
       await loadCategories();
+      if (options.budgetScope === "monthly" || options.budgetScope === "yearly") {
+        await Promise.all([loadBudgets(), loadYearlyBudgets(), loadDashboard()]);
+        const period =
+          options.budgetScope === "yearly"
+            ? String(Number.parseInt(String(state.month || "").slice(0, 4), 10) || new Date().getFullYear())
+            : state.month;
+        openBudgetEditSheet(options.budgetScope, period, safeName, 0);
+      }
       if (formToReset instanceof HTMLFormElement) formToReset.reset();
       return true;
     } catch (error) {
@@ -4836,9 +4865,10 @@ function toggleAmountPrivacyVisibility() {
 }
 
 function renderAccountComposition(dashboard) {
+  const label = $("#heroCompositionLabel");
   const bar = $("#heroCompositionBar");
   const legend = $("#heroCompositionLegend");
-  if (!bar || !legend) return;
+  if (!label || !bar || !legend) return;
   syncHeroCompositionToggleControl();
   const accounts = Array.isArray(dashboard.account_composition) ? dashboard.account_composition : [];
   const positive = accounts
@@ -4849,7 +4879,11 @@ function renderAccountComposition(dashboard) {
     .filter((row) => row.amount_base > 0.01)
     .sort((a, b) => b.amount_base - a.amount_base);
   const total = positive.reduce((sum, row) => sum + row.amount_base, 0);
-  if (!positive.length || total <= 0) {
+  const shouldHideComposition = positive.length <= 1 || total <= 0;
+  label.classList.toggle("hidden", shouldHideComposition);
+  bar.classList.toggle("hidden", shouldHideComposition);
+  legend.classList.toggle("hidden", shouldHideComposition);
+  if (shouldHideComposition) {
     bar.innerHTML = "";
     legend.innerHTML = "";
     return;
@@ -5143,18 +5177,21 @@ function renderDashboardAccountsCard() {
 }
 
 function openAccountEditSheet(accountId) {
-  const account = (state.accounts || []).find((row) => row.id === accountId);
+  const targetId = Number(accountId);
+  const account = (state.accounts || []).find((row) => Number(row.id) === targetId);
   if (!account) {
     showToast(t("accountNotFound"), true);
     return;
   }
-  state.editingAccountId = accountId;
+  state.editingAccountId = targetId;
   const form = $("#accountEditForm");
+  const currencyValue = $("#accountEditCurrencyValue");
+  const typeValue = $("#accountEditTypeValue");
   if (!(form instanceof HTMLFormElement)) return;
   form.elements.account_id.value = String(account.id);
   form.elements.name.value = String(account.name || "");
-  form.elements.account_currency.value = String(account.currency || "");
-  form.elements.type.value = String(account.type || "bank");
+  if (currencyValue) currencyValue.textContent = String(account.currency || "");
+  if (typeValue) typeValue.textContent = accountTypeLabel(String(account.type || "bank"));
   form.elements.balance.value = String(Number(account.balance || 0));
   openSheet("accountEditSheet", { preserveUtility: true });
 }
@@ -5166,16 +5203,15 @@ async function submitAccountEditForm(event) {
   const fd = new FormData(form);
   const accountId = Number(fd.get("account_id"));
   const name = String(fd.get("name") || "").trim();
-  const type = String(fd.get("type") || "").trim();
   const balance = Number(fd.get("balance"));
-  if (!Number.isInteger(accountId) || accountId <= 0 || !name || !type || !Number.isFinite(balance)) {
+  if (!Number.isInteger(accountId) || accountId <= 0 || !name || !Number.isFinite(balance)) {
     showToast(t("invalidAmount"), true);
     return;
   }
   try {
     await api(`/api/v1/accounts/${accountId}`, {
       method: "PATCH",
-      body: JSON.stringify({ name, type, balance })
+      body: JSON.stringify({ name, balance })
     });
     showToast(t("accountUpdated"));
     try {
@@ -5205,7 +5241,17 @@ async function deleteCurrentAccount() {
     }
   } catch (error) {
     if (Number(error?.status) === 409) {
-      showToast(formatErrorForToast(error), true);
+      const linkedCount = Number(error?.payload?.linked_transactions || 0) || await getLinkedTransactionCount(accountId);
+      if (
+        !window.confirm(
+          t("accountDeleteLinkedConfirm", {
+            count: String(linkedCount)
+          })
+        )
+      ) {
+        return;
+      }
+      await forceDeleteCurrentAccount();
       return;
     }
     showErrorToast(error);
@@ -5215,16 +5261,6 @@ async function deleteCurrentAccount() {
 async function forceDeleteCurrentAccount() {
   const accountId = Number(state.editingAccountId || 0);
   if (!Number.isInteger(accountId) || accountId <= 0) return;
-  const linkedCount = await getLinkedTransactionCount(accountId);
-  if (
-    !window.confirm(
-      t("accountForceDeleteConfirm", {
-        count: String(linkedCount)
-      })
-    )
-  ) {
-    return;
-  }
   try {
     await api(`/api/v1/accounts/${accountId}?force=true`, { method: "DELETE" });
     showToast(t("accountForceDeleted"));
@@ -5243,12 +5279,13 @@ async function forceDeleteCurrentAccount() {
 function openBudgetEditSheet(scope, period, category_l1, totalAmount) {
   const form = $("#budgetEditForm");
   if (!(form instanceof HTMLFormElement)) return;
+  const scopeValue = $("#budgetEditScopeValue");
+  const categoryValue = $("#budgetEditCategoryValue");
   form.elements.scope.value = scope;
   form.elements.period.value = period;
   form.elements.category_l1_orig.value = category_l1;
-  form.elements.scope_display.value = scope === "yearly" ? t("periodYearly") : t("periodMonthly");
-  form.elements.period_display.value = period;
-  form.elements.category_display.value = withL1Emoji(category_l1);
+  if (scopeValue) scopeValue.textContent = scope === "yearly" ? t("periodYearly") : t("periodMonthly");
+  if (categoryValue) categoryValue.textContent = withL1Emoji(category_l1);
   form.elements.total_amount.value = String(totalAmount);
   openSheet("budgetEditSheet", { preserveUtility: true });
 }
@@ -6866,7 +6903,6 @@ function applyI18n() {
   setText("accountEditBalanceHint", t("accountEditBalanceHint"));
   setText("accountEditSaveBtn", t("saveAccount"));
   setText("accountDeleteBtn", t("deleteAccount"));
-  setText("accountForceDeleteBtn", t("forceDeleteAccount"));
   setText("budgetEditTitle", t("editBudget"));
   setText("budgetEditScopeLabel", t("budgetScope"));
   setText("budgetEditPeriodLabel", t("budgetPeriod"));
@@ -7644,7 +7680,7 @@ document.addEventListener("DOMContentLoaded", () => {
   const budgetAddCatBtn = document.getElementById("budgetAddCategoryBtn");
   if (budgetAddCatBtn) {
     budgetAddCatBtn.addEventListener("click", () => {
-      void createL1CategoryInline();
+      openCategoryPrompt("l1", "", { budgetScope: getActiveBudgetScope() });
     });
   }
 });

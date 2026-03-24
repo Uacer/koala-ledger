@@ -198,7 +198,7 @@ test("expense supports l1/l2/tag and budget only at l1 level", async () => {
   assert.equal(budgetListRes.body[0].overspend, true);
 });
 
-test("expense and income fallback to unassigned account when account is omitted", async () => {
+test("expense and income fallback to default account when account is omitted", async () => {
   const { api } = createHarness();
   const date = "2026-03-10";
 
@@ -228,10 +228,10 @@ test("expense and income fallback to unassigned account when account is omitted"
 
   const accountsRes = await api.get("/api/v1/accounts").send();
   assert.equal(accountsRes.status, 200);
-  const unassigned = accountsRes.body.find((row) => Number(row.id) === Number(expenseRes.body.account_from_id));
-  assert.ok(unassigned);
-  assert.equal(unassigned.type, "cash");
-  assert.ok(["Unassigned Account", "未分配账户"].includes(String(unassigned.name)));
+  const fallbackAccount = accountsRes.body.find((row) => Number(row.id) === Number(expenseRes.body.account_from_id));
+  assert.ok(fallbackAccount);
+  assert.equal(fallbackAccount.type, "cash");
+  assert.ok(["Default Account", "默认账户"].includes(String(fallbackAccount.name)));
 });
 
 test("deleting l2 category keeps historical transactions unchanged", async () => {
@@ -794,7 +794,7 @@ test("account balances are updated in account currency, dashboard unified in bas
   });
 });
 
-test("account edit supports changing name, type, and balance together", async () => {
+test("account edit supports changing name and balance while keeping type unchanged", async () => {
   const { api } = createHarness();
   const account = await createAccount(api, {
     name: "Wallet To Edit",
@@ -805,20 +805,20 @@ test("account edit supports changing name, type, and balance together", async ()
 
   const patchRes = await api.patch(`/api/v1/accounts/${account.id}`).send({
     name: "Travel Wallet",
-    type: "crypto_wallet",
     balance: 250
   });
   assert.equal(patchRes.status, 200);
   assert.equal(patchRes.body.name, "Travel Wallet");
-  assert.equal(patchRes.body.type, "crypto_wallet");
+  assert.equal(patchRes.body.type, "bank");
   assert.equal(Number(patchRes.body.balance), 250);
 
   const accountsRes = await api.get("/api/v1/accounts").send();
   assert.equal(accountsRes.status, 200);
   const updated = accountsRes.body.find((row) => row.id === account.id);
+  assert.equal(updated.type, "bank");
   assert.ok(updated);
   assert.equal(updated.name, "Travel Wallet");
-  assert.equal(updated.type, "crypto_wallet");
+  assert.equal(updated.type, "bank");
   assert.equal(Number(updated.balance), 250);
 });
 

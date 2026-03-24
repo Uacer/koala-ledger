@@ -4104,6 +4104,25 @@ body.sheet-open .topbar {
   margin-bottom: 4px;
 }
 
+.budget-edit-meta-row {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.budget-edit-meta-item {
+  min-width: 0;
+}
+
+.budget-edit-meta-value,
+.sheet-meta-value {
+  color: var(--ink);
+  font-size: 0.98rem;
+  font-weight: 600;
+  line-height: 1.35;
+  word-break: break-word;
+}
+
 .account-list-row {
   cursor: pointer;
 }

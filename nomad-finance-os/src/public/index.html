@@ -949,7 +949,7 @@
                   <option value="symbol" id="quickSettingsCurrencyDisplaySymbolOption">Symbol ($)</option>
                 </select>
               </div>
-              <div class="settings-row">
+              <div class="settings-row hidden">
                 <span class="settings-row-label" id="quickSettingsThemeLabel">Theme</span>
                 <select name="theme" class="settings-inline-select">
                   <option value="system" id="quickSettingsThemeSystemOption">System</option>
@@ -960,7 +960,25 @@
               </div>
               <div class="settings-row">
                 <span class="settings-row-label" id="quickSettingsTimezoneLabel">Timezone</span>
-                <input name="timezone" type="text" value="UTC" class="settings-inline-input" />
+                <select name="timezone" class="settings-inline-select">
+                  <option value="UTC">UTC</option>
+                  <option value="Asia/Shanghai">Asia/Shanghai</option>
+                  <option value="Asia/Hong_Kong">Asia/Hong_Kong</option>
+                  <option value="Asia/Tokyo">Asia/Tokyo</option>
+                  <option value="Asia/Seoul">Asia/Seoul</option>
+                  <option value="Asia/Bangkok">Asia/Bangkok</option>
+                  <option value="Asia/Singapore">Asia/Singapore</option>
+                  <option value="Asia/Kuala_Lumpur">Asia/Kuala_Lumpur</option>
+                  <option value="Asia/Kolkata">Asia/Kolkata</option>
+                  <option value="Asia/Dubai">Asia/Dubai</option>
+                  <option value="Europe/London">Europe/London</option>
+                  <option value="Europe/Berlin">Europe/Berlin</option>
+                  <option value="Europe/Paris">Europe/Paris</option>
+                  <option value="Europe/Zurich">Europe/Zurich</option>
+                  <option value="America/New_York">America/New_York</option>
+                  <option value="America/Toronto">America/Toronto</option>
+                  <option value="Australia/Sydney">Australia/Sydney</option>
+                </select>
               </div>
             </div>
 
@@ -1013,26 +1031,19 @@
         </div>
         <form id="accountEditForm" class="sheet-form">
           <input name="account_id" type="hidden" />
+          <div class="budget-edit-meta-row">
+            <div class="budget-edit-meta-item">
+              <span id="accountEditCurrencyLabel" class="field-eyebrow">Currency</span>
+              <div class="sheet-meta-value" id="accountEditCurrencyValue"></div>
+            </div>
+            <div class="budget-edit-meta-item">
+              <span id="accountEditTypeLabel" class="field-eyebrow">Type</span>
+              <div class="sheet-meta-value" id="accountEditTypeValue"></div>
+            </div>
+          </div>
           <label>
             <span id="accountEditNameLabel" class="field-eyebrow">Account Name</span>
             <input name="name" type="text" required autocomplete="off" />
-          </label>
-          <label>
-            <span id="accountEditCurrencyLabel" class="field-eyebrow">Currency</span>
-            <input name="account_currency" type="text" readonly style="color:var(--ink-soft)" />
-          </label>
-          <label>
-            <span id="accountEditTypeLabel" class="field-eyebrow">Type</span>
-            <select name="type" required>
-              <option value="bank">🏦 Bank</option>
-              <option value="cash">💵 Cash</option>
-              <option value="wise">💸 Wise</option>
-              <option value="crypto_wallet">₿ Crypto</option>
-              <option value="exchange">📈 Exchange</option>
-              <option value="alipay">🅰 Alipay</option>
-              <option value="wechat">💬 WeChat</option>
-              <option value="restricted_cash">🔒 Restricted</option>
-            </select>
           </label>
           <label>
             <span id="accountEditBalanceLabel" class="field-eyebrow">Current Balance</span>
@@ -1044,7 +1055,6 @@
         <div class="account-edit-danger">
           <p class="settings-section-label">Danger Zone</p>
           <button class="btn account-delete-btn" id="accountDeleteBtn" type="button">Delete Account</button>
-          <button class="btn btn-danger" id="accountForceDeleteBtn" type="button">Force Delete (with all Transactions)</button>
         </div>
       </article>
     </section>
@@ -1060,18 +1070,16 @@
           <input name="scope" type="hidden" />
           <input name="period" type="hidden" />
           <input name="category_l1_orig" type="hidden" />
-          <label>
-            <span class="field-eyebrow" id="budgetEditScopeLabel">Scope</span>
-            <input name="scope_display" type="text" readonly style="color:var(--ink-soft)" />
-          </label>
-          <label>
-            <span class="field-eyebrow" id="budgetEditPeriodLabel">Period</span>
-            <input name="period_display" type="text" readonly style="color:var(--ink-soft)" />
-          </label>
-          <label>
-            <span class="field-eyebrow" id="budgetEditCatLabel">Category</span>
-            <input name="category_display" type="text" readonly style="color:var(--ink-soft)" />
-          </label>
+          <div class="budget-edit-meta-row">
+            <div class="budget-edit-meta-item">
+              <span class="field-eyebrow" id="budgetEditScopeLabel">Scope</span>
+              <div class="budget-edit-meta-value" id="budgetEditScopeValue"></div>
+            </div>
+            <div class="budget-edit-meta-item">
+              <span class="field-eyebrow" id="budgetEditCatLabel">Category</span>
+              <div class="budget-edit-meta-value" id="budgetEditCategoryValue"></div>
+            </div>
+          </div>
           <label>
             <span class="field-eyebrow" id="budgetEditAmtLabel">Amount</span>
             <input name="total_amount" type="number" step="0.01" min="0" required />

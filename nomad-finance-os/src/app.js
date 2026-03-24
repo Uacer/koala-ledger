@@ -97,8 +97,10 @@ const ALLOWED_AGENT_SCOPES = new Set([
   "admin:rebuild-balances"
 ]);
 const CRYPTO_ACCOUNT_TYPES = new Set(["crypto_wallet", "exchange"]);
-const UNASSIGNED_ACCOUNT_NAME_ZH = "未分配账户";
-const UNASSIGNED_ACCOUNT_NAME_EN = "Unassigned Account";
+const UNASSIGNED_ACCOUNT_NAME_ZH = "默认账户";
+const UNASSIGNED_ACCOUNT_NAME_EN = "Default Account";
+const LEGACY_UNASSIGNED_ACCOUNT_NAME_ZH = "未分配账户";
+const LEGACY_UNASSIGNED_ACCOUNT_NAME_EN = "Unassigned Account";
 const CURRENCY_DISPLAY_MODES = new Set(["code", "symbol"]);
 const ONBOARDING_STEPS = new Set(["step1", "step2", "step3", "step4", "completed"]);
 const INCOME_BAND_MIDPOINTS = Object.freeze({
@@ -992,8 +994,7 @@ function createApp(db) {
     }
     const schema = z.object({
       name: z.string().min(1).max(128).optional(),
-      balance: z.number().finite(),
-      type: z.enum(ACCOUNT_TYPES).optional()
+      balance: z.number().finite()
     });
     const parsed = schema.safeParse(req.body);
     if (!parsed.success) {
@@ -1010,16 +1011,15 @@ function createApp(db) {
     const txDelta = computeAccountTxDelta(db, req.userId, accountId, accountCurrency);
     const nextBalance = Number(parsed.data.balance);
     const nextOpening = Number((nextBalance - txDelta).toFixed(8));
-    const nextType = parsed.data.type || account.type;
     const nextName = parsed.data.name ? parsed.data.name.trim() : account.name;
 
     db.prepare(
       `
         UPDATE accounts
-        SET name = ?, type = ?, opening_balance = ?, balance = ?
+        SET name = ?, opening_balance = ?, balance = ?
         WHERE user_id = ? AND id = ?
       `
-    ).run(nextName, nextType, nextOpening, nextBalance, req.userId, accountId);
+    ).run(nextName, nextOpening, nextBalance, req.userId, accountId);
 
     const updated = db
       .prepare("SELECT * FROM accounts WHERE user_id = ? AND id = ?")
@@ -2083,9 +2083,23 @@ function buildOnboardingBudgetAllocations(activeL1, estimatedIncome, budgetPool)
 }
 
 function getAccounts(db, userId) {
+  normalizeLegacyDefaultAccountNames(db, userId);
   return db
     .prepare("SELECT * FROM accounts WHERE user_id = ? ORDER BY id")
     .all(userId);
+}
+
+function normalizeLegacyDefaultAccountNames(db, userId) {
+  const settings = getUserSettings(db, userId);
+  const preferredName = settings.ui_language === "zh" ? UNASSIGNED_ACCOUNT_NAME_ZH : UNASSIGNED_ACCOUNT_NAME_EN;
+  db.prepare(
+    `
+      UPDATE accounts
+      SET name = ?
+      WHERE user_id = ?
+        AND name IN (?, ?)
+    `
+  ).run(preferredName, userId, LEGACY_UNASSIGNED_ACCOUNT_NAME_EN, LEGACY_UNASSIGNED_ACCOUNT_NAME_ZH);
 }
 
 function getOrCreateUnassignedAccount(db, userId) {
@@ -2097,13 +2111,29 @@ function getOrCreateUnassignedAccount(db, userId) {
       `
         SELECT *
         FROM accounts
-        WHERE user_id = ? AND name IN (?, ?)
-        ORDER BY CASE name WHEN ? THEN 0 WHEN ? THEN 1 ELSE 2 END, id ASC
+        WHERE user_id = ? AND name IN (?, ?, ?, ?)
+        ORDER BY CASE name WHEN ? THEN 0 WHEN ? THEN 1 WHEN ? THEN 2 WHEN ? THEN 3 ELSE 4 END, id ASC
         LIMIT 1
       `
     )
-    .get(userId, preferredName, fallbackName, preferredName, fallbackName);
-  if (existing) return existing;
+    .get(
+      userId,
+      preferredName,
+      fallbackName,
+      LEGACY_UNASSIGNED_ACCOUNT_NAME_EN,
+      LEGACY_UNASSIGNED_ACCOUNT_NAME_ZH,
+      preferredName,
+      fallbackName,
+      LEGACY_UNASSIGNED_ACCOUNT_NAME_EN,
+      LEGACY_UNASSIGNED_ACCOUNT_NAME_ZH
+    );
+  if (existing) {
+    if (existing.name !== preferredName) {
+      db.prepare("UPDATE accounts SET name = ? WHERE user_id = ? AND id = ?").run(preferredName, userId, existing.id);
+      existing.name = preferredName;
+    }
+    return existing;
+  }
   const accountCurrency = normalizeSupportedCurrency(settings.base_currency || "USD", "currency");
   const result = db
     .prepare(
