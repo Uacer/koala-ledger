@@ -106,7 +106,7 @@ const state = {
 const UI_CURRENCIES = new Set(["AUD", "CNY", "EUR", "THB", "USD", "JPY", "KRW"]);
 const UI_LANGUAGES = new Set(["en", "zh"]);
 const UI_CURRENCY_DISPLAY_MODES = new Set(["code", "symbol"]);
-const UI_THEMES = new Set(["system", "light", "dark", "aurora"]);
+const UI_THEMES = new Set(["light"]);
 const CURRENCY_SYMBOL_MAP = {
   AUD: "A$",
   USD: "$",
@@ -262,6 +262,7 @@ const I18N = {
     periodMonthly: "month",
     periodYearly: "yearly",
     editBudget: "Edit Budget",
+    budgetDeleteConfirm: "Delete this budget? This cannot be undone.",
     addExpense: "🧾 Add Expense",
     addIncome: "💰 Add Income",
     addTransfer: "🔁 Add Transfer",
@@ -491,6 +492,7 @@ const I18N = {
     backToDashboard: "Back to Dashboard",
     back: "Back",
     edit: "Edit",
+    delete: "Delete",
     editTransaction: "Edit Transaction",
     transactionDetailTitle: "Transaction Detail",
     transactionDetailAmount: "Amount",
@@ -500,6 +502,7 @@ const I18N = {
     transactionDetailCreatedAt: "Created at {time}",
     saveTransaction: "Save Transaction",
     deleteTransaction: "Delete Transaction",
+    deleteBudget: "Delete Budget",
     transactionDeleteConfirm: "Delete this transaction? This cannot be undone.",
     transactionUpdated: "Transaction updated",
     transactionDeleted: "Transaction deleted",
@@ -689,6 +692,7 @@ const I18N = {
     periodMonthly: "月",
     periodYearly: "每年",
     editBudget: "编辑预算",
+    budgetDeleteConfirm: "确认删除该预算？删除后不可恢复。",
     addExpense: "🧾 新增支出",
     addIncome: "💰 新增收入",
     addTransfer: "🔁 新增转账",
@@ -917,6 +921,7 @@ const I18N = {
     backToDashboard: "返回总览",
     back: "返回",
     edit: "编辑",
+    delete: "删除",
     editTransaction: "编辑交易",
     transactionDetailTitle: "交易详情",
     transactionDetailAmount: "金额",
@@ -926,6 +931,7 @@ const I18N = {
     transactionDetailCreatedAt: "创建于 {time}",
     saveTransaction: "保存交易",
     deleteTransaction: "删除交易",
+    deleteBudget: "删除预算",
     transactionDeleteConfirm: "确认删除该交易？删除后不可恢复。",
     transactionUpdated: "交易已更新",
     transactionDeleted: "交易已删除",
@@ -1503,6 +1509,10 @@ function bindUI() {
   }
   $("#transactionEditForm").addEventListener("submit", submitTransactionEditForm);
   $("#accountDeleteBtn").addEventListener("click", deleteCurrentAccount);
+  const budgetDeleteBtn = $("#budgetDeleteBtn");
+  if (budgetDeleteBtn) {
+    budgetDeleteBtn.addEventListener("click", deleteBudget);
+  }
   const transactionDeleteBtn = $("#transactionDeleteBtn");
   if (transactionDeleteBtn) {
     transactionDeleteBtn.addEventListener("click", deleteCurrentTransaction);
@@ -5186,11 +5196,13 @@ function openAccountEditSheet(accountId) {
   state.editingAccountId = targetId;
   const form = $("#accountEditForm");
   const currencyValue = $("#accountEditCurrencyValue");
+  const balanceCurrency = $("#accountEditBalanceCurrency");
   const typeValue = $("#accountEditTypeValue");
   if (!(form instanceof HTMLFormElement)) return;
   form.elements.account_id.value = String(account.id);
   form.elements.name.value = String(account.name || "");
   if (currencyValue) currencyValue.textContent = String(account.currency || "");
+  if (balanceCurrency) balanceCurrency.textContent = formatCurrencyUnit(String(account.currency || ""));
   if (typeValue) typeValue.textContent = accountTypeLabel(String(account.type || "bank"));
   form.elements.balance.value = String(Number(account.balance || 0));
   openSheet("accountEditSheet", { preserveUtility: true });
@@ -5325,6 +5337,7 @@ async function deleteBudget() {
   const scope = String(form.elements.scope.value || "");
   const period = String(form.elements.period.value || "");
   const category_l1 = String(form.elements.category_l1_orig.value || "");
+  if (!window.confirm(t("budgetDeleteConfirm"))) return;
   try {
     if (scope === "yearly") {
       await api("/api/v1/budgets/yearly", { method: "DELETE", body: JSON.stringify({ year: Number(period), category_l1 }) });
@@ -6586,8 +6599,8 @@ function ensureCurrencyDisplayMode(value) {
 }
 
 function ensureUITheme(value) {
-  const mode = String(value || "system").toLowerCase();
-  return UI_THEMES.has(mode) ? mode : "system";
+  const mode = String(value || "light").toLowerCase();
+  return UI_THEMES.has(mode) ? mode : "light";
 }
 
 function ensureOnboardingIncomeBand(value) {
@@ -6635,23 +6648,18 @@ function normalizeOnboardingStep(value) {
 }
 
 function resolveThemeMode(themeValue) {
-  const mode = ensureUITheme(themeValue);
-  if (mode === "aurora") return "aurora";
-  if (mode === "dark" || mode === "light") return mode;
-  return systemThemeMedia?.matches ? "dark" : "light";
+  return ensureUITheme(themeValue);
 }
 
-function applyTheme(themeValue = state.settings?.theme || "system") {
+function applyTheme(themeValue = state.settings?.theme || "light") {
   const selected = ensureUITheme(themeValue);
-  const resolved = resolveThemeMode(selected);
-  document.documentElement.setAttribute("data-theme", resolved);
+  document.documentElement.setAttribute("data-theme", resolveThemeMode(selected));
   document.documentElement.setAttribute("data-theme-preference", selected);
 }
 
 if (systemThemeMedia) {
   const handleSystemThemeChange = () => {
-    if (ensureUITheme(state.settings?.theme || "system") !== "system") return;
-    applyTheme("system");
+    applyTheme("light");
   };
   if (typeof systemThemeMedia.addEventListener === "function") {
     systemThemeMedia.addEventListener("change", handleSystemThemeChange);
@@ -6902,8 +6910,9 @@ function applyI18n() {
   setText("accountEditBalanceLabel", t("accountBalanceLabel"));
   setText("accountEditBalanceHint", t("accountEditBalanceHint"));
   setText("accountEditSaveBtn", t("saveAccount"));
-  setText("accountDeleteBtn", t("deleteAccount"));
+  setText("accountDeleteBtn", t("delete"));
   setText("budgetEditTitle", t("editBudget"));
+  setText("budgetDeleteBtn", t("deleteBudget"));
   setText("budgetEditScopeLabel", t("budgetScope"));
   setText("budgetEditPeriodLabel", t("budgetPeriod"));
   setText("budgetEditCatLabel", t("categoryL1"));

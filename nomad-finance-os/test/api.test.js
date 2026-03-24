@@ -676,21 +676,21 @@ test("settings persists ui_language", async () => {
   assert.equal(after.body.ui_language, "zh");
 });
 
-test("settings persists theme", async () => {
+test("settings always forces light theme", async () => {
   const { api } = createHarness();
   const initial = await api.get("/api/v1/settings").send();
   assert.equal(initial.status, 200);
-  assert.equal(initial.body.theme, "system");
+  assert.equal(initial.body.theme, "light");
 
   const update = await api.put("/api/v1/settings").send({
     theme: "aurora"
   });
   assert.equal(update.status, 200);
-  assert.equal(update.body.theme, "aurora");
+  assert.equal(update.body.theme, "light");
 
   const after = await api.get("/api/v1/settings").send();
   assert.equal(after.status, 200);
-  assert.equal(after.body.theme, "aurora");
+  assert.equal(after.body.theme, "light");
 });
 
 test("yearly budgets + monthly snapshot generation", async () => {

@@ -1025,12 +1025,30 @@
     <section id="accountEditSheet" class="sheet hidden" aria-hidden="true">
       <div class="sheet-backdrop" data-close-sheet="accountEditSheet"></div>
       <article class="sheet-card">
-        <div class="sheet-head">
-          <h3 id="accountEditTitle">Edit Account</h3>
-          <button class="btn btn-ghost" type="button" data-close-sheet="accountEditSheet">Close</button>
+        <div class="txd-topbar edit-sheet-topbar">
+          <button class="txd-close-btn edit-sheet-delete-btn" id="accountDeleteBtn" type="button">Delete</button>
+          <span class="txd-title edit-sheet-title" id="accountEditTitle">Edit Account</span>
+          <button class="txd-edit-btn edit-sheet-close-btn" type="button" data-close-sheet="accountEditSheet">Close</button>
         </div>
         <form id="accountEditForm" class="sheet-form">
           <input name="account_id" type="hidden" />
+          <div class="txd-hero account-edit-hero">
+            <label class="account-edit-balance-hero">
+              <span id="accountEditBalanceLabel" class="sr-only">Current Balance</span>
+              <div class="account-edit-balance-input-wrap">
+                <input
+                  name="balance"
+                  class="account-edit-balance-input"
+                  type="number"
+                  step="0.01"
+                  inputmode="decimal"
+                  required
+                  aria-labelledby="accountEditBalanceLabel"
+                />
+                <span class="account-edit-balance-currency" id="accountEditBalanceCurrency"></span>
+              </div>
+            </label>
+          </div>
           <div class="budget-edit-meta-row">
             <div class="budget-edit-meta-item">
               <span id="accountEditCurrencyLabel" class="field-eyebrow">Currency</span>
@@ -1045,26 +1063,19 @@
             <span id="accountEditNameLabel" class="field-eyebrow">Account Name</span>
             <input name="name" type="text" required autocomplete="off" />
           </label>
-          <label>
-            <span id="accountEditBalanceLabel" class="field-eyebrow">Current Balance</span>
-            <input name="balance" type="number" step="0.01" inputmode="decimal" required />
-          </label>
           <p id="accountEditBalanceHint" class="muted small">Changing current balance will update this account's starting point while keeping linked transactions intact.</p>
           <button class="btn btn-solid" id="accountEditSaveBtn" type="submit">Save Changes</button>
         </form>
-        <div class="account-edit-danger">
-          <p class="settings-section-label">Danger Zone</p>
-          <button class="btn account-delete-btn" id="accountDeleteBtn" type="button">Delete Account</button>
-        </div>
       </article>
     </section>
 
     <section id="budgetEditSheet" class="sheet hidden" aria-hidden="true">
       <div class="sheet-backdrop" data-close-sheet="budgetEditSheet"></div>
       <article class="sheet-card">
-        <div class="sheet-head">
-          <h3 id="budgetEditTitle">Edit Budget</h3>
-          <button class="btn btn-ghost" type="button" data-close-sheet="budgetEditSheet">Close</button>
+        <div class="txd-topbar edit-sheet-topbar">
+          <button class="txd-close-btn edit-sheet-delete-btn" id="budgetDeleteBtn" type="button">Delete Budget</button>
+          <span class="txd-title edit-sheet-title" id="budgetEditTitle">Edit Budget</span>
+          <button class="txd-edit-btn edit-sheet-close-btn" type="button" data-close-sheet="budgetEditSheet">Close</button>
         </div>
         <form id="budgetEditForm" class="sheet-form">
           <input name="scope" type="hidden" />
@@ -1093,9 +1104,10 @@
     <section id="transactionEditSheet" class="sheet hidden" aria-hidden="true">
       <div class="sheet-backdrop" data-close-sheet="transactionEditSheet"></div>
       <article class="sheet-card">
-        <div class="sheet-head">
-          <h3 id="transactionEditTitle">Edit Transaction</h3>
-          <button class="btn btn-ghost" type="button" data-close-sheet="transactionEditSheet">Close</button>
+        <div class="txd-topbar edit-sheet-topbar">
+          <button class="txd-close-btn edit-sheet-delete-btn" id="transactionDeleteBtn" type="button">Delete Transaction</button>
+          <span class="txd-title edit-sheet-title" id="transactionEditTitle">Edit Transaction</span>
+          <button class="txd-edit-btn edit-sheet-close-btn" type="button" data-close-sheet="transactionEditSheet">Close</button>
         </div>
         <form id="transactionEditForm" class="sheet-form">
           <input name="transaction_id" type="hidden" />

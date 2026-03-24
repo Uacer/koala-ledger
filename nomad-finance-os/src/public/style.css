@@ -3387,6 +3387,10 @@ body.sheet-open .topbar {
   padding-bottom: 8px;
 }
 
+.sheet-head h3 {
+  margin: 0;
+}
+
 /* Sheet slide-up animations */
 @keyframes sheet-slide-up {
   from { transform: translateY(28px); opacity: 0.75; }
@@ -3518,6 +3522,73 @@ body.sheet-open .topbar {
   padding: 0;
 }
 .txd-edit-btn:active { opacity: 0.6; }
+
+.edit-sheet-topbar {
+  margin-bottom: 14px;
+}
+
+.edit-sheet-title {
+  font-size: 1rem;
+  color: var(--ink);
+}
+
+.edit-sheet-delete-btn {
+  color: #7B2D26;
+}
+
+.edit-sheet-close-btn {
+  color: var(--ink-soft);
+}
+
+.account-edit-hero {
+  padding: 6px 0 20px;
+}
+
+.account-edit-balance-hero {
+  display: block;
+}
+
+.account-edit-balance-input-wrap {
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
+  gap: 8px;
+}
+
+.account-edit-balance-input {
+  width: min(260px, 100%);
+  border: none;
+  background: transparent;
+  box-shadow: none;
+  padding: 0;
+  margin: 0;
+  text-align: center;
+  font: inherit;
+  font-size: 2.6rem;
+  font-weight: 700;
+  letter-spacing: -0.02em;
+  line-height: 1.1;
+  color: var(--ink);
+}
+
+.account-edit-balance-input:focus {
+  outline: none;
+}
+
+.account-edit-balance-input::-webkit-outer-spin-button,
+.account-edit-balance-input::-webkit-inner-spin-button {
+  -webkit-appearance: none;
+  margin: 0;
+}
+
+.account-edit-balance-currency {
+  font-size: 1rem;
+  font-weight: 500;
+  line-height: 1.3;
+  color: var(--ink-soft);
+  margin-bottom: 0.32rem;
+  letter-spacing: 0;
+}
 
 /* hero amount */
 .txd-hero {

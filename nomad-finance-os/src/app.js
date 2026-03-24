@@ -553,7 +553,7 @@ function createApp(db) {
     }
     const timezone = payload.timezone || current.timezone;
     const uiLanguage = payload.ui_language || current.ui_language;
-    const theme = payload.theme || current.theme;
+    const theme = "light";
     const currencyDisplayMode = payload.currency_display_mode || current.currency_display_mode;
     let livingCountryCode = current.living_country_code;
     if (payload.living_country_code !== undefined) {
@@ -1995,9 +1995,7 @@ function getUserSettings(db, userId) {
     base_currency: SUPPORTED_CURRENCIES.includes(normalizedBase) ? normalizedBase : "USD",
     timezone: row.timezone || "UTC",
     ui_language: row.ui_language === "zh" ? "zh" : "en",
-    theme: ["system", "light", "dark", "aurora"].includes(String(row.theme || "system"))
-      ? String(row.theme)
-      : "system",
+    theme: "light",
     currency_display_mode: CURRENCY_DISPLAY_MODES.has(String(row.currency_display_mode || "code"))
       ? String(row.currency_display_mode)
       : "code",
