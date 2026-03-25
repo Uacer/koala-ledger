@@ -659,6 +659,28 @@ test("supports AUD for settings and accounts", async () => {
   assert.equal(accountRes.body.currency, "AUD");
 });
 
+test("wechat and alipay accounts are always stored in CNY", async () => {
+  const { api } = createHarness();
+
+  const wechatRes = await api.post("/api/v1/accounts").send({
+    name: "Wechat Wallet",
+    type: "wechat",
+    currency: "AUD",
+    balance: 88
+  });
+  assert.equal(wechatRes.status, 201);
+  assert.equal(wechatRes.body.currency, "CNY");
+
+  const alipayRes = await api.post("/api/v1/accounts").send({
+    name: "Alipay Wallet",
+    type: "alipay",
+    currency: "USD",
+    balance: 99
+  });
+  assert.equal(alipayRes.status, 201);
+  assert.equal(alipayRes.body.currency, "CNY");
+});
+
 test("settings persists ui_language", async () => {
   const { api } = createHarness();
   const initial = await api.get("/api/v1/settings").send();

@@ -341,6 +341,7 @@ const I18N = {
     onboardingAdd: "Add",
     onboardingAddL1: "Add L1",
     onboardingAddL2: "Add L2",
+    add: "Add",
     onboardingNoAccounts: "No accounts yet.",
     onboardingNoCategories: "No active categories.",
     onboardingIncomeBandLt3000: "< 3,000 {currency}",
@@ -442,8 +443,8 @@ const I18N = {
     accountsEmptyHint: "Create one account to start tracking balances and transactions.",
     accountBaseCurrencyBadge: "Base {currency}",
     accountCreateEyebrow: "New Account",
-    accountCreateTitle: "Create Your First Account",
-    accountCreateHint: "Keep it simple. Start with the account you use most often.",
+    accountCreateTitle: "Create Account",
+    accountCreateHint: "Add another account anytime. Start with the one you use most often.",
     accountNameLabel: "Name",
     accountTypeQuickLabel: "Common Types",
     accountTypeLabel: "All Types",
@@ -451,6 +452,7 @@ const I18N = {
     accountBalanceLabel: "Current Balance",
     accountCreateBalanceHint: "Use the balance right now. We will treat it as your starting point and keep future transactions on top.",
     createAccount: "Create Account",
+    accountNameExists: "An account with this name already exists.",
     navReview: "Monthly Review",
     navCategories: "Categories",
     navAgentAccess: "Agent Access",
@@ -461,7 +463,7 @@ const I18N = {
     refresh: "Refresh",
     dashboardWidgets: "Dashboard Widgets",
     showOnDashboard: "Show on Dashboard",
-    addL1Bottom: "✏️ Add L1",
+    addL1Bottom: "Add",
     addCategory: "Add Category",
     addL2Inline: "＋",
     addL2Action: "Add Tag",
@@ -770,6 +772,7 @@ const I18N = {
     onboardingAdd: "添加",
     onboardingAddL1: "新增 L1",
     onboardingAddL2: "新增 L2",
+    add: "添加",
     onboardingNoAccounts: "还没有账户。",
     onboardingNoCategories: "暂无可用分类。",
     onboardingIncomeBandLt3000: "< 3,000 {currency}",
@@ -871,8 +874,8 @@ const I18N = {
     accountsEmptyHint: "先创建一个账户，再开始记账和看余额。",
     accountBaseCurrencyBadge: "基准 {currency}",
     accountCreateEyebrow: "新账户",
-    accountCreateTitle: "创建你的第一个账户",
-    accountCreateHint: "先从最常用的账户开始，后面的账户可以慢慢补。",
+    accountCreateTitle: "创建账户",
+    accountCreateHint: "可以随时继续新增，先填你最常用的账户就行。",
     accountNameLabel: "名称",
     accountTypeQuickLabel: "常用类型",
     accountTypeLabel: "全部类型",
@@ -880,6 +883,7 @@ const I18N = {
     accountBalanceLabel: "当前余额",
     accountCreateBalanceHint: "填写此刻余额即可。系统会把它当作起点，后续交易在这个基础上累加。",
     createAccount: "创建账户",
+    accountNameExists: "已经有同名账户了，请换一个名称。",
     navReview: "月度回顾",
     navCategories: "分类管理",
     navAgentAccess: "Agent 接入",
@@ -890,7 +894,7 @@ const I18N = {
     refresh: "刷新",
     dashboardWidgets: "首页卡片显示",
     showOnDashboard: "显示在首页",
-    addL1Bottom: "✏️ 新增一级分类",
+    addL1Bottom: "添加",
     addCategory: "新增分类",
     addL2Inline: "＋",
     addL2Action: "新增标签",
@@ -1282,6 +1286,35 @@ function bindUI() {
   $("#transactionEditForm [name=transfer_reason]").addEventListener("change", handleTransactionEditTypeChange);
   $("#openQuickAddBtn").addEventListener("click", () => openSheet("quickEntrySheet"));
   $("#openSettingsBtn").addEventListener("click", () => openSheet("settingsSheet"));
+  const settingsSheet = $("#settingsSheet");
+  if (settingsSheet) {
+    settingsSheet.addEventListener("click", (event) => {
+      if (!(event.target instanceof Element)) return;
+      const button = event.target.closest("button");
+      if (!(button instanceof HTMLButtonElement)) return;
+      if (button.id === "settingsOpenGeneral") {
+        showSettingsPage("settingsPageGeneral", "forward");
+        return;
+      }
+      if (button.id === "settingsBackFromGeneral") {
+        showSettingsPage("settingsPageMain", "back");
+        return;
+      }
+      if (button.id === "settingsOpenWidgets") {
+        state.widgetsOpenedFromDashboard = false;
+        showSettingsPage("settingsPageWidgets", "forward");
+        return;
+      }
+      if (button.id === "settingsBackFromWidgets") {
+        if (state.widgetsOpenedFromDashboard) {
+          state.widgetsOpenedFromDashboard = false;
+          closeSheet("settingsSheet");
+          return;
+        }
+        showSettingsPage("settingsPageMain", "back");
+      }
+    });
+  }
   const budgetBtn = $("#openBudgetSheetBtn");
   if (budgetBtn) {
     budgetBtn.addEventListener("click", () => {
@@ -1896,6 +1929,16 @@ function openSheet(id, options = {}) {
     $("#quickSettingsForm [name=ui_language]").value = ensureUILanguage(state.settings?.ui_language || "en");
     syncDevBypassVisibility();
     showSettingsPage("settingsPageMain", "back");
+  }
+  if (id === "accountCreateSheet") {
+    const accountForm = $("#accountForm");
+    if (accountForm instanceof HTMLFormElement) {
+      resetAccountCreateForm();
+    }
+    const card = node.querySelector(".sheet-card");
+    if (card instanceof HTMLElement) {
+      card.scrollTop = 0;
+    }
   }
   node.classList.remove("hidden");
   node.setAttribute("aria-hidden", "false");
@@ -3156,11 +3199,11 @@ async function loadSettings() {
   state.onboarding.baseCurrency = uiBase;
   state.onboarding.incomeBand = ensureOnboardingIncomeBand(state.settings.monthly_income_band || state.onboarding.incomeBand);
   updateAccountCurrencyBadges();
-  const accountCreateWrap = $("#accountCreateWrap");
+  const accountCreateSheet = $("#accountCreateSheet");
   const accountForm = $("#accountForm");
   if (
     accountForm instanceof HTMLFormElement &&
-    (!(accountCreateWrap instanceof HTMLElement) || accountCreateWrap.classList.contains("hidden"))
+    (!(accountCreateSheet instanceof HTMLElement) || accountCreateSheet.classList.contains("hidden"))
   ) {
     applyAccountFormDefaults(accountForm);
   }
@@ -4108,13 +4151,17 @@ async function submitAccountForm(event) {
   const form = event.currentTarget;
   if (!(form instanceof HTMLFormElement)) return;
   const fd = new FormData(form);
+  const type = String(fd.get("type") || form.elements.namedItem("type")?.value || "bank").trim();
+  const currencyField = form.elements.namedItem("currency");
+  const currencyValue =
+    currencyField instanceof HTMLSelectElement ? currencyField.value : String(fd.get("currency") || "");
   try {
     await api("/api/v1/accounts", {
       method: "POST",
       body: JSON.stringify({
         name: String(fd.get("name") || "").trim(),
-        type: fd.get("type"),
-        currency: String(fd.get("currency")).toUpperCase(),
+        type,
+        currency: getAccountCurrencyForType(type, currencyValue),
         balance: Number(fd.get("balance") || "0")
       })
     });
@@ -4122,12 +4169,15 @@ async function submitAccountForm(event) {
     try {
       await Promise.all([loadAccounts(), loadDashboard()]);
       resetAccountCreateForm();
-      const wrap = $("#accountCreateWrap");
-      if (wrap) wrap.classList.add("hidden");
+      closeSheet("accountCreateSheet");
     } catch (error) {
       showRefreshFailureToast(error);
     }
   } catch (error) {
+    if (Number(error?.status) === 409 && String(error?.payload?.error_code || "") === "ACCOUNT_NAME_EXISTS") {
+      showToast(t("accountNameExists"), true);
+      return;
+    }
     showErrorToast(error);
   }
 }
@@ -6396,18 +6446,7 @@ async function loadBudgets() {
     return b ? { ...b, configured: true } : { category_l1: name, month: state.month, total_amount: 0, spent_amount: 0, remaining_amount: 0, configured: false };
   });
 
-  target.innerHTML = merged
-    .map((row) => `
-      <article class="list-row clickable" data-action="edit-budget" data-scope="monthly" data-period="${escapeHtml(row.month)}" data-category="${escapeHtml(row.category_l1)}" data-amount="${Number(row.total_amount)}">
-        <div class="row-main">
-          <strong>${escapeHtml(withL1Emoji(row.category_l1))}</strong>
-          ${row.configured
-            ? `<span class="${row.overspend ? "overspend" : "muted"}">${formatMoney(row.spent_amount)} / ${formatMoney(row.total_amount)}</span>`
-            : `<span class="muted">—</span>`}
-        </div>
-        ${row.configured ? `<div class="muted">${escapeHtml(t("remaining"))}: ${formatMoney(row.remaining_amount)}</div>` : ""}
-      </article>`)
-    .join("");
+  target.innerHTML = renderBudgetListRows(merged, "monthly", state.month);
 
   // Dashboard quick list — only configured (amount > 0)
   const quickTarget = $("#quickBudgetList");
@@ -6441,9 +6480,28 @@ async function loadYearlyBudgets() {
     return b ? { ...b, configured: true } : { category_l1: name, year, total_amount: 0, spent_amount: 0, remaining_amount: 0, configured: false };
   });
 
-  target.innerHTML = merged
-    .map((row) => `
-      <article class="list-row clickable" data-action="edit-budget" data-scope="yearly" data-period="${escapeHtml(String(row.year))}" data-category="${escapeHtml(row.category_l1)}" data-amount="${Number(row.total_amount)}">
+  target.innerHTML = renderBudgetListRows(merged, "yearly", String(year));
+}
+
+function renderBudgetListRows(rows, scope, period) {
+  const sourceRows = Array.isArray(rows) ? rows : [];
+  const configuredRows = sourceRows.filter((row) => Boolean(row?.configured));
+  const unconfiguredRows = sourceRows.filter((row) => !row?.configured);
+  const renderedConfigured = configuredRows.map((row) => renderBudgetListRow(row, scope, period));
+  const renderedUnconfigured = unconfiguredRows.map((row) => renderBudgetListRow(row, scope, period));
+  const parts = [];
+  if (renderedConfigured.length) parts.push(renderedConfigured.join(""));
+  if (renderedConfigured.length && renderedUnconfigured.length) {
+    parts.push('<div class="budget-list-divider" aria-hidden="true"></div>');
+  }
+  if (renderedUnconfigured.length) parts.push(renderedUnconfigured.join(""));
+  return parts.join("");
+}
+
+function renderBudgetListRow(row, scope, period) {
+  const periodValue = scope === "yearly" ? String(row?.year || period || "") : String(row?.month || period || "");
+  return `
+      <article class="list-row clickable" data-action="edit-budget" data-scope="${escapeHtml(scope)}" data-period="${escapeHtml(periodValue)}" data-category="${escapeHtml(row.category_l1)}" data-amount="${Number(row.total_amount)}">
         <div class="row-main">
           <strong>${escapeHtml(withL1Emoji(row.category_l1))}</strong>
           ${row.configured
@@ -6451,8 +6509,7 @@ async function loadYearlyBudgets() {
             : `<span class="muted">—</span>`}
         </div>
         ${row.configured ? `<div class="muted">${escapeHtml(t("remaining"))}: ${formatMoney(row.remaining_amount)}</div>` : ""}
-      </article>`)
-    .join("");
+      </article>`;
 }
 
 async function loadReview() {
@@ -6874,6 +6931,9 @@ function applyI18n() {
   setText("debugRuntimeTitle", t("debugRuntime"));
   setText("quickSettingsSaveBtn", t("saveSettings"));
   setText("quickLogoutBtn", t("logout"));
+  setText("accountsPanelTitle", t("navAccounts"));
+  setText("categoriesPanelTitle", t("navCategories"));
+  setText("toggleAccountFormBtn", t("add"));
   setText("settingsLinkBudgetLabel", t("navBudget"));
   setText("settingsLinkAccountsLabel", t("navAccounts"));
   setText("settingsLinkCategoriesLabel", t("navCategories"));
@@ -6895,6 +6955,7 @@ function applyI18n() {
   setText("agentTokenRevealCopySetupBtn", t("copyAgentSetupWithToken"));
   setText("accountCreateEyebrow", t("accountCreateEyebrow"));
   setText("accountCreateTitle", t("accountCreateTitle"));
+  setText("accountCreateCloseBtn", t("close"));
   setText("accountCreateHint", t("accountCreateHint"));
   setText("accountNameLabel", t("accountNameLabel"));
   setText("accountTypeQuickLabel", t("accountTypeQuickLabel"));
@@ -6912,7 +6973,7 @@ function applyI18n() {
   setText("accountEditSaveBtn", t("saveAccount"));
   setText("accountDeleteBtn", t("delete"));
   setText("budgetEditTitle", t("editBudget"));
-  setText("budgetDeleteBtn", t("deleteBudget"));
+  setText("budgetDeleteBtn", t("delete"));
   setText("budgetEditScopeLabel", t("budgetScope"));
   setText("budgetEditPeriodLabel", t("budgetPeriod"));
   setText("budgetEditCatLabel", t("categoryL1"));
@@ -7224,6 +7285,31 @@ function getDefaultAccountCurrency() {
   return ensureUICurrency(state.settings?.base_currency || state.onboarding.baseCurrency || "USD");
 }
 
+function isCnyLockedAccountType(type) {
+  const normalized = String(type || "").trim().toLowerCase();
+  return normalized === "wechat" || normalized === "alipay";
+}
+
+function getAccountCurrencyForType(type, fallback = "") {
+  if (isCnyLockedAccountType(type)) return "CNY";
+  return ensureUICurrency(fallback || getDefaultAccountCurrency());
+}
+
+function syncAccountCurrencyField(form) {
+  if (!(form instanceof HTMLFormElement)) return;
+  const typeField = form.elements.namedItem("type");
+  const currencyField = form.elements.namedItem("currency");
+  if (!(typeField instanceof HTMLSelectElement) || !(currencyField instanceof HTMLSelectElement)) return;
+  const locked = isCnyLockedAccountType(typeField.value);
+  currencyField.value = getAccountCurrencyForType(typeField.value, currencyField.value);
+  currencyField.disabled = locked;
+  currencyField.classList.toggle("is-locked", locked);
+  const currencyLabel = currencyField.closest("label");
+  if (currencyLabel instanceof HTMLElement) {
+    currencyLabel.classList.toggle("is-locked", locked);
+  }
+}
+
 function updateAccountCurrencyBadges() {
   const currency = formatCurrencyUnit(getDefaultAccountCurrency());
   setText("accountCreateCurrencyBadge", t("accountBaseCurrencyBadge", { currency }));
@@ -7263,6 +7349,7 @@ function bindAccountTypePickers() {
         const select = document.getElementById(selectId);
         if (!(select instanceof HTMLSelectElement) || !value) return;
         select.value = value;
+        syncAccountCurrencyField(select.form);
         renderAccountTypePickers();
       });
       container.dataset.bound = "true";
@@ -7271,6 +7358,7 @@ function bindAccountTypePickers() {
     const select = document.getElementById(selectId);
     if (select instanceof HTMLSelectElement && !select.dataset.quickPickerBound) {
       select.addEventListener("change", () => {
+        syncAccountCurrencyField(select.form);
         renderAccountTypePickers();
       });
       select.dataset.quickPickerBound = "true";
@@ -7295,11 +7383,12 @@ function applyAccountFormDefaults(form, options = {}) {
     typeField.value = defaultType;
   }
   if (currencyField instanceof HTMLSelectElement) {
-    currencyField.value = defaultCurrency;
+    currencyField.value = getAccountCurrencyForType(defaultType, defaultCurrency);
   }
   if (balanceField instanceof HTMLInputElement) {
     balanceField.value = "0";
   }
+  syncAccountCurrencyField(form);
   updateAccountCurrencyBadges();
   renderAccountTypePickers();
 }
@@ -7634,27 +7723,14 @@ document.addEventListener("DOMContentLoaded", () => {
   }
 });
 
-// ── Panel form toggles ────────────────────────────────────────────
+// ── Panel controls ────────────────────────────────────────────────
 document.addEventListener("DOMContentLoaded", () => {
-  function bindToggle(btnId, wrapId, resetFn) {
-    const btn = document.getElementById(btnId);
-    const wrap = document.getElementById(wrapId);
-    if (!btn || !wrap) return;
-    btn.addEventListener("click", () => {
-      const isHidden = wrap.classList.contains("hidden");
-      wrap.classList.toggle("hidden", !isHidden);
-      if (isHidden && resetFn) {
-        resetFn();
-        const firstInput = wrap.querySelector("input, select, textarea");
-        if (firstInput instanceof HTMLElement) firstInput.focus();
-      }
+  const openAccountCreateBtn = document.getElementById("toggleAccountFormBtn");
+  if (openAccountCreateBtn) {
+    openAccountCreateBtn.addEventListener("click", () => {
+      openSheet("accountCreateSheet", { preserveUtility: true });
     });
   }
-
-  // Accounts
-  bindToggle("toggleAccountFormBtn", "accountCreateWrap", () => {
-    resetAccountCreateForm();
-  });
 
 
   // Agent token

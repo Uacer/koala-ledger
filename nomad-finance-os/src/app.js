@@ -97,6 +97,7 @@ const ALLOWED_AGENT_SCOPES = new Set([
   "admin:rebuild-balances"
 ]);
 const CRYPTO_ACCOUNT_TYPES = new Set(["crypto_wallet", "exchange"]);
+const CNY_ONLY_ACCOUNT_TYPES = new Set(["alipay", "wechat"]);
 const UNASSIGNED_ACCOUNT_NAME_ZH = "默认账户";
 const UNASSIGNED_ACCOUNT_NAME_EN = "Default Account";
 const LEGACY_UNASSIGNED_ACCOUNT_NAME_ZH = "未分配账户";
@@ -939,26 +940,41 @@ function createApp(db) {
     }
     const payload = parsed.data;
     let accountCurrency;
-    try {
-      accountCurrency = normalizeSupportedCurrency(payload.currency, "currency");
-    } catch (error) {
-      return res.status(400).json({ error: String(error.message || "Invalid currency.") });
+    if (CNY_ONLY_ACCOUNT_TYPES.has(payload.type)) {
+      accountCurrency = "CNY";
+    } else {
+      try {
+        accountCurrency = normalizeSupportedCurrency(payload.currency, "currency");
+      } catch (error) {
+        return res.status(400).json({ error: String(error.message || "Invalid currency.") });
+      }
     }
-    const result = db
-      .prepare(
-        `
-          INSERT INTO accounts (user_id, name, type, currency, opening_balance, balance)
-          VALUES (?, ?, ?, ?, ?, ?)
-        `
-      )
-      .run(
-        req.userId,
-        payload.name.trim(),
-        payload.type,
-        accountCurrency,
-        payload.balance,
-        payload.balance
-      );
+    let result;
+    try {
+      result = db
+        .prepare(
+          `
+            INSERT INTO accounts (user_id, name, type, currency, opening_balance, balance)
+            VALUES (?, ?, ?, ?, ?, ?)
+          `
+        )
+        .run(
+          req.userId,
+          payload.name.trim(),
+          payload.type,
+          accountCurrency,
+          payload.balance,
+          payload.balance
+        );
+    } catch (error) {
+      if (String(error?.code || "") === "SQLITE_CONSTRAINT_UNIQUE") {
+        return res.status(409).json({
+          error: "Account name already exists.",
+          error_code: "ACCOUNT_NAME_EXISTS"
+        });
+      }
+      throw error;
+    }
     const account = db
       .prepare("SELECT * FROM accounts WHERE user_id = ? AND id = ?")
       .get(req.userId, Number(result.lastInsertRowid));

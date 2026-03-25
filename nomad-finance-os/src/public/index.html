@@ -1,5 +1,5 @@
 <!doctype html>
-<html lang="en">
+<html lang="en" data-theme="light" data-theme-preference="light">
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
@@ -9,6 +9,10 @@
     <meta name="apple-mobile-web-app-title" content="Nomad Finance OS" />
     <meta name="apple-mobile-web-app-status-bar-style" id="appleStatusBarStyleMeta" content="default" />
     <title>Nomad Finance OS</title>
+    <script>
+      document.documentElement.setAttribute("data-theme", "light");
+      document.documentElement.setAttribute("data-theme-preference", "light");
+    </script>
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link
@@ -442,19 +446,26 @@
         <div class="panel-head sheet-head settings-subpage-head">
           <button class="settings-back-btn panel-back-btn" id="accountsBackBtn" type="button" aria-label="Back">←</button>
           <h3 id="accountsPanelTitle">Accounts</h3>
-          <button class="panel-add-btn" id="toggleAccountFormBtn" type="button">＋ Add</button>
+          <button class="panel-add-btn account-panel-add-btn" id="toggleAccountFormBtn" type="button">Add</button>
         </div>
         <div id="accountList" class="list-block"></div>
-        <div id="accountCreateWrap" class="panel-form-wrap hidden">
-          <form id="accountForm" class="card account-create-form">
-            <div class="account-create-head">
-              <div>
-                <p class="panel-form-eyebrow" id="accountCreateEyebrow">New Account</p>
-                <h4 id="accountCreateTitle">Create Your First Account</h4>
-              </div>
-              <span id="accountCreateCurrencyBadge" class="pill">Base USD</span>
+      </section>
+
+      <section id="accountCreateSheet" class="sheet hidden" aria-hidden="true">
+        <div class="sheet-backdrop" data-close-sheet="accountCreateSheet"></div>
+        <article class="sheet-card account-create-sheet-card">
+          <div class="sheet-head">
+            <div class="account-create-sheet-headline">
+              <p class="panel-form-eyebrow" id="accountCreateEyebrow">New Account</p>
+              <h3 id="accountCreateTitle">Create Account</h3>
             </div>
-            <p id="accountCreateHint" class="muted small">Keep it simple. Start with the account you use most often.</p>
+            <button id="accountCreateCloseBtn" class="settings-close-btn" type="button" data-close-sheet="accountCreateSheet">Close</button>
+          </div>
+          <form id="accountForm" class="sheet-form account-create-form">
+            <div class="account-create-sheet-summary">
+              <span id="accountCreateCurrencyBadge" class="pill">Base USD</span>
+              <p id="accountCreateHint" class="muted small">Keep it simple. Start with the account you use most often.</p>
+            </div>
             <label class="account-create-name">
               <span id="accountNameLabel" class="field-eyebrow">Name</span>
               <input name="name" type="text" placeholder="e.g. SCB Savings" required autocomplete="off" />
@@ -504,7 +515,7 @@
               <button class="btn btn-solid" id="accountCreateSubmitBtn" type="submit">Create Account</button>
             </div>
           </form>
-        </div>
+        </article>
       </section>
 
       <!-- ── Budget Panel ── -->
@@ -556,7 +567,7 @@
         <div class="panel-head sheet-head settings-subpage-head">
           <button class="settings-back-btn panel-back-btn" id="categoriesBackBtn" type="button" aria-label="Back">←</button>
           <h3 id="categoriesPanelTitle">Categories</h3>
-          <button id="addL1BottomBtn" class="panel-add-btn" type="button">＋ Add</button>
+          <button id="addL1BottomBtn" class="panel-add-btn account-panel-add-btn" type="button">Add</button>
         </div>
         <div id="categoryTree" class="list-block"></div>
       </section>
@@ -814,7 +825,7 @@
         <div class="settings-page" id="settingsPageMain">
           <div class="sheet-head">
             <h3 id="settingsSheetTitle">Settings</h3>
-            <button class="btn btn-ghost" type="button" data-close-sheet="settingsSheet">Close</button>
+            <button class="settings-close-btn" type="button" data-close-sheet="settingsSheet">Close</button>
           </div>
 
           <div class="settings-nav-group">
@@ -1073,7 +1084,7 @@
       <div class="sheet-backdrop" data-close-sheet="budgetEditSheet"></div>
       <article class="sheet-card">
         <div class="txd-topbar edit-sheet-topbar">
-          <button class="txd-close-btn edit-sheet-delete-btn" id="budgetDeleteBtn" type="button">Delete Budget</button>
+          <button class="txd-close-btn edit-sheet-delete-btn" id="budgetDeleteBtn" type="button">Delete</button>
           <span class="txd-title edit-sheet-title" id="budgetEditTitle">Edit Budget</span>
           <button class="txd-edit-btn edit-sheet-close-btn" type="button" data-close-sheet="budgetEditSheet">Close</button>
         </div>

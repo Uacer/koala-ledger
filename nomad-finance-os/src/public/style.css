@@ -2302,6 +2302,13 @@ h3 {
   opacity: 0.85;
 }
 
+.budget-list-divider {
+  height: 1px;
+  margin: 4px 10px 2px;
+  background: color-mix(in oklab, var(--line), transparent 18%);
+  border-radius: 999px;
+}
+
 .row-main {
   display: flex;
   justify-content: space-between;
@@ -3373,6 +3380,30 @@ body.sheet-open .topbar {
   padding-bottom: 8px;
 }
 
+.settings-close-btn {
+  appearance: none;
+  border: none;
+  background: transparent;
+  box-shadow: none;
+  padding: 0;
+  margin: 0;
+  min-height: auto;
+  color: var(--ink-soft);
+  font: inherit;
+  font-size: 1rem;
+  font-weight: 500;
+  line-height: 1.2;
+  cursor: pointer;
+}
+
+.settings-close-btn:hover {
+  color: var(--ink);
+}
+
+.settings-close-btn:active {
+  opacity: 0.72;
+}
+
 .sheet-head {
   display: flex;
   align-items: center;
@@ -3412,7 +3443,8 @@ body.sheet-open .topbar {
 }
 
 #quickEntrySheet:not(.hidden) .sheet-card,
-#settingsSheet:not(.hidden) .sheet-card {
+#settingsSheet:not(.hidden) .sheet-card,
+#accountCreateSheet:not(.hidden) .sheet-card {
   animation: sheet-slide-up-full 220ms cubic-bezier(0.32, 0.72, 0, 1) forwards;
 }
 
@@ -3747,9 +3779,9 @@ body.sheet-open .topbar {
 }
 
 .settings-row {
-  display: flex;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(144px, 42%);
   align-items: center;
-  justify-content: space-between;
   gap: 12px;
   padding: 13px 14px;
   border-bottom: 1px solid color-mix(in oklab, var(--line), transparent 40%);
@@ -3761,12 +3793,13 @@ body.sheet-open .topbar {
 
 .settings-row-label {
   font-size: 0.95rem;
-  flex: 1;
+  min-width: 0;
+  line-height: 1.22;
 }
 
 .settings-inline-select {
-  width: auto;
-  min-width: 0;
+  width: 100%;
+  min-width: 144px;
   border: none;
   background: transparent;
   box-shadow: none;
@@ -3774,6 +3807,7 @@ body.sheet-open .topbar {
   font-size: 0.9rem;
   color: var(--ink-soft);
   text-align: right;
+  justify-self: end;
   border-radius: 0;
 }
 
@@ -4034,6 +4068,28 @@ body.sheet-open .topbar {
   transform: scale(0.96);
 }
 
+.account-panel-add-btn {
+  min-width: 44px;
+  min-height: 44px;
+  padding: 0;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  color: var(--ink-soft);
+  font-size: 1rem;
+  font-weight: 500;
+  justify-self: end;
+}
+
+.account-panel-add-btn:hover {
+  color: var(--ink);
+}
+
+.account-panel-add-btn:active {
+  transform: none;
+  opacity: 0.72;
+}
+
 .panel-form-wrap {
   animation: fade-slide 200ms ease;
 }
@@ -4112,11 +4168,39 @@ body.sheet-open .topbar {
 .account-create-form {
   display: grid;
   gap: 14px;
-  padding: 18px;
+  padding: 0;
+  background: transparent;
+  border: 0;
+}
+
+.account-create-sheet-card {
+  top: 0;
+  bottom: 0;
+  max-height: none;
+  border-radius: 0;
+  border: 0;
+  padding-top: calc(10px + var(--safe-top));
+  padding-bottom: calc(20px + var(--safe-bottom));
+}
+
+.account-create-sheet-headline {
+  display: grid;
+  gap: 2px;
+}
+
+.account-create-sheet-headline h3 {
+  margin: 0;
+}
+
+.account-create-sheet-summary {
+  display: grid;
+  gap: 10px;
+  padding: 16px 16px 0;
   background:
     radial-gradient(circle at top right, rgba(242, 212, 166, 0.28), transparent 32%),
     linear-gradient(180deg, color-mix(in oklab, var(--paper), white 8%) 0%, var(--paper) 100%);
   border: 1px solid color-mix(in oklab, var(--line), transparent 16%);
+  border-radius: 18px 18px 0 0;
 }
 
 .account-form-title {
@@ -4156,6 +4240,15 @@ body.sheet-open .topbar {
   gap: 4px;
 }
 
+.account-form-row label.is-locked select,
+.account-form-row select.is-locked {
+  color: var(--ink-soft);
+  background: color-mix(in oklab, var(--paper), var(--line) 12%);
+  border-color: color-mix(in oklab, var(--line), transparent 2%);
+  cursor: not-allowed;
+  opacity: 1;
+}
+
 .account-form-actions {
   display: flex;
   justify-content: flex-start;
@@ -4163,6 +4256,15 @@ body.sheet-open .topbar {
 
 .account-form-actions .btn {
   min-width: 180px;
+}
+
+.account-create-form > :not(.account-create-sheet-summary) {
+  margin-left: 16px;
+  margin-right: 16px;
+}
+
+.account-create-form > :last-child {
+  margin-bottom: 0;
 }
 
 .field-eyebrow {
@@ -4293,7 +4395,7 @@ body.utility-mode .panel.utility-open {
   inset: 0;
   z-index: 55;
   overflow: auto;
-  padding-top: calc(14px + var(--safe-top));
+  padding-top: 0;
   padding-right: max(14px, calc(var(--safe-right) + 14px));
   padding-bottom: calc(20px + var(--safe-bottom));
   padding-left: max(14px, calc(var(--safe-left) + 14px));
@@ -4321,7 +4423,7 @@ body.utility-mode .panel.utility-open > .panel-head {
   background: var(--bg-2) !important;
   box-shadow: none !important;
   border-radius: 0 !important;
-  padding: 0 0 8px !important;
+  padding: calc(14px + var(--safe-top)) 0 8px !important;
   margin-bottom: 0;
   position: sticky;
   top: 0;
@@ -4338,6 +4440,13 @@ body.utility-mode .panel.utility-open > .panel-head .panel-add-btn {
   padding: 0 12px;
   font-size: 0.84rem;
   justify-self: end;
+}
+
+body.utility-mode .panel.utility-open > .panel-head .account-panel-add-btn {
+  height: auto;
+  min-height: 44px;
+  padding: 0;
+  font-size: 1rem;
 }
 
 /* Hide global utility close button — each panel now has its own back button */
@@ -4665,4 +4774,10 @@ body.utility-mode #dashboardPanel {
 }
 .acct-delta-out {
   color: var(--danger);
+}
+
+@media (max-width: 520px) {
+  .settings-row {
+    grid-template-columns: minmax(0, 1fr) minmax(156px, 46%);
+  }
 }
