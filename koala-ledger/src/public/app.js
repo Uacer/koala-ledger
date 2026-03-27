@@ -57,7 +57,8 @@ const state = {
     budgetPieView: false,
     currencyModeToggling: false,
     accountCompositionPercent: false,
-    hideSensitiveAmounts: false
+    hideSensitiveAmounts: false,
+    heroAvatarPaletteSource: ""
   },
   debug: {
     requests: [],
@@ -229,6 +230,7 @@ const ACCOUNT_TYPE_PICKER_PRESETS = Object.freeze({
   zh: ["bank", "cash", "alipay", "wechat", "wise"]
 });
 const HERO_AVATAR_STORAGE_KEY = "koala-ledger:hero-avatar-data-url";
+const HERO_AVATAR_PALETTE_STORAGE_KEY = "koala-ledger:hero-avatar-palette";
 const HERO_AVATAR_DEFAULT_SRC = "/koala-default-avatar.svg";
 const HERO_AVATAR_MAX_BYTES = 2 * 1024 * 1024;
 const I18N = {
@@ -562,6 +564,7 @@ const I18N = {
     txFilterAmountMax: "Max amount",
     txFilterShowAdvanced: "Show filters",
     txFilterHideAdvanced: "Hide filters",
+    compositionShort: "Composition",
     txFilterApply: "Apply",
     txFilterReset: "Reset",
     recentSpendToday: "Today",
@@ -626,7 +629,7 @@ const I18N = {
     transactionNotFound: "Transaction not found",
     invalidTransactionId: "Invalid transaction id",
     expenseSaved: "Expense saved",
-    maxSpendHint: "max: {amount} {currency}",
+    maxSpendHint: "balance: {amount} {currency}",
     amountExceeded: "Amount exceeds account available balance ({amount} {currency}).",
     invalidAmount: "Please enter a valid amount.",
     txTypeExpense: "EXPENSE",
@@ -676,14 +679,14 @@ const I18N = {
   zh: {
     subtitle: "更轻量的日常财务驾驶舱。",
     month: "月份",
-    tabDashboard: "总览",
+    tabDashboard: "摘要",
     tabTransactions: "交易",
     tabBudgets: "预算",
     tabAccounts: "账户",
     tabReview: "月度回顾",
     tabCategories: "分类",
     tabSettings: "设置",
-    dashboard: "总览",
+    dashboard: "摘要",
     pinned: "置顶",
     liquiditySplit: "流动性结构",
     runwaySignal: "Runway 信号",
@@ -1001,6 +1004,7 @@ const I18N = {
     txFilterAmountMax: "最大金额",
     txFilterShowAdvanced: "显示筛选",
     txFilterHideAdvanced: "收起筛选",
+    compositionShort: "Composition",
     txFilterApply: "筛选",
     txFilterReset: "重置",
     recentSpendToday: "今天",
@@ -1056,7 +1060,7 @@ const I18N = {
     transactionNotFound: "未找到交易",
     invalidTransactionId: "无效的交易 ID",
     expenseSaved: "支出已保存",
-    maxSpendHint: "上限：{amount} {currency}",
+    maxSpendHint: "余额：{amount} {currency}",
     amountExceeded: "金额超过账户可用余额（{amount} {currency}）。",
     invalidAmount: "请输入有效金额。",
     txTypeExpense: "支出",
@@ -1110,6 +1114,7 @@ const MONEY_FORMATTER = new Intl.NumberFormat(undefined, {
   maximumFractionDigits: 2
 });
 let quickEntryLimitReqSeq = 0;
+let quickAmountFxReqSeq = 0;
 let authResendTimer = null;
 let topbarCompactRaf = 0;
 let recentCompareChartRaf = 0;
@@ -1223,12 +1228,6 @@ function bindUI() {
       toggleHeroCompositionLegendMode();
     });
   }
-  const heroPrivacyToggleBtn = $("#heroPrivacyToggleBtn");
-  if (heroPrivacyToggleBtn) {
-    heroPrivacyToggleBtn.addEventListener("click", () => {
-      toggleAmountPrivacyVisibility();
-    });
-  }
   const heroAvatar = $("#heroAvatar");
   const heroAvatarInput = $("#heroAvatarInput");
   if (heroAvatar && heroAvatarInput instanceof HTMLInputElement) {
@@ -1251,16 +1250,26 @@ function bindUI() {
   const heroNetWorthValue = $("#heroNetWorthValue");
   if (heroNetWorthValue) {
     heroNetWorthValue.addEventListener("click", (event) => {
-      const target = event.target instanceof Element ? event.target.closest(".hero-value-unit-toggle") : null;
-      if (!target) return;
-      void toggleTopCurrencyDisplayMode();
+      const target = event.target instanceof Element ? event.target : null;
+      if (target?.closest(".hero-value-unit-toggle")) {
+        void toggleTopCurrencyDisplayMode();
+        return;
+      }
+      if (target?.closest(".hero-value-amount-toggle")) {
+        toggleAmountPrivacyVisibility();
+      }
     });
     heroNetWorthValue.addEventListener("keydown", (event) => {
-      const target = event.target instanceof Element ? event.target.closest(".hero-value-unit-toggle") : null;
-      if (!target) return;
-      if (event.key !== "Enter" && event.key !== " ") return;
+      const target = event.target instanceof Element ? event.target : null;
+      if (!target || (event.key !== "Enter" && event.key !== " ")) return;
       event.preventDefault();
-      void toggleTopCurrencyDisplayMode();
+      if (target.closest(".hero-value-unit-toggle")) {
+        void toggleTopCurrencyDisplayMode();
+        return;
+      }
+      if (target.closest(".hero-value-amount-toggle")) {
+        toggleAmountPrivacyVisibility();
+      }
     });
   }
   const transactionFilterForm = $("#transactionFilterForm");
@@ -1600,6 +1609,21 @@ function bindUI() {
       void openTransactionRecordsPanel();
     });
   }
+  const recentExpensesStats = $("#recentExpensesStats");
+  if (recentExpensesStats) {
+    recentExpensesStats.addEventListener("click", (event) => {
+      if (!(event.target instanceof Element)) return;
+      const item = event.target.closest(".recent-expense-mini-item[data-date]");
+      if (!item) return;
+      const date = String(item.getAttribute("data-date") || "").trim();
+      if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) return;
+      void openTransactionRecordsPanel({
+        type: "expense",
+        start: date,
+        end: date
+      });
+    });
+  }
   const categoryTree = $("#categoryTree");
   if (categoryTree) {
     categoryTree.addEventListener("click", (event) => {
@@ -1932,8 +1956,17 @@ function closeTransactionRecordsOnlyMode() {
   setTransactionRecordsOnlyMode(false);
 }
 
-async function openTransactionRecordsPanel() {
+async function openTransactionRecordsPanel(presetFilters = null) {
   resetTransactionFilters();
+  syncTransactionAdvancedFilters(false);
+  if (presetFilters && typeof presetFilters === "object") {
+    state.txFilters = {
+      ...state.txFilters,
+      ...presetFilters
+    };
+    applyTransactionFiltersToInputs();
+    syncTransactionAdvancedFilters(false);
+  }
   setTransactionRecordsOnlyMode(true);
   openUtilityPanel("transactionsPanel");
   try {
@@ -2230,31 +2263,6 @@ function syncHeroCompositionToggleControl() {
   label.setAttribute("aria-label", hint);
 }
 
-function renderHeroPrivacyToggleControl() {
-  const btn = $("#heroPrivacyToggleBtn");
-  if (!btn) return;
-  const hidden = isAmountPrivacyEnabled();
-  const hint = t(hidden ? "showAmounts" : "hideAmounts");
-  btn.classList.toggle("active", hidden);
-  btn.setAttribute("title", hint);
-  btn.setAttribute("aria-label", hint);
-  const icon = hidden
-    ? `
-      <svg viewBox="0 0 24 24" aria-hidden="true">
-        <path d="M2 12s3.5-6 10-6 10 6 10 6-3.5 6-10 6-10-6-10-6Z"></path>
-        <circle cx="12" cy="12" r="3"></circle>
-        <path d="M4 4l16 16"></path>
-      </svg>
-    `
-    : `
-      <svg viewBox="0 0 24 24" aria-hidden="true">
-        <path d="M2 12s3.5-6 10-6 10 6 10 6-3.5 6-10 6-10-6-10-6Z"></path>
-        <circle cx="12" cy="12" r="3"></circle>
-      </svg>
-    `;
-  btn.innerHTML = `${icon}<span class="sr-only">${escapeHtml(hint)}</span>`;
-}
-
 function renderHeroAvatar() {
   const avatar = $("#heroAvatar");
   const image = $("#heroAvatarImage");
@@ -2265,11 +2273,15 @@ function renderHeroAvatar() {
   );
   const label = String(rawLabel || "Koala Ledger").trim();
   const uploadHint = t("avatarUploadHint");
-  image.src = readHeroAvatarSrc();
+  const src = readHeroAvatarSrc();
+  applyHeroCardPalette(readHeroAvatarPalette());
+  image.src = src;
   image.onerror = () => {
     image.onerror = null;
     image.src = HERO_AVATAR_DEFAULT_SRC;
+    void refreshHeroCardPaletteFromAvatar(HERO_AVATAR_DEFAULT_SRC, { force: true });
   };
+  void refreshHeroCardPaletteFromAvatar(src);
   avatar.setAttribute("aria-label", `${uploadHint} · ${label}`);
   avatar.setAttribute("title", uploadHint);
 }
@@ -2289,6 +2301,144 @@ function writeHeroAvatarSrc(value) {
     return true;
   } catch {
     return false;
+  }
+}
+
+function readHeroAvatarPalette() {
+  try {
+    const raw = localStorage.getItem(HERO_AVATAR_PALETTE_STORAGE_KEY);
+    if (!raw) return null;
+    const parsed = JSON.parse(raw);
+    const primary = normalizeRgbTriplet(parsed?.primary);
+    const secondary = normalizeRgbTriplet(parsed?.secondary);
+    if (!primary || !secondary) return null;
+    return { primary, secondary };
+  } catch {
+    return null;
+  }
+}
+
+function writeHeroAvatarPalette(palette) {
+  try {
+    localStorage.setItem(HERO_AVATAR_PALETTE_STORAGE_KEY, JSON.stringify(palette));
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+function normalizeRgbTriplet(value) {
+  if (!Array.isArray(value) || value.length !== 3) return null;
+  const nums = value.map((part) => Math.max(0, Math.min(255, Number(part))));
+  if (nums.some((part) => !Number.isFinite(part))) return null;
+  return nums.map((part) => Math.round(part));
+}
+
+function mixRgb(source, target, amount) {
+  const ratio = Math.max(0, Math.min(1, Number(amount)));
+  return source.map((channel, index) => Math.round(channel * (1 - ratio) + target[index] * ratio));
+}
+
+function rgbaString(rgb, alpha) {
+  const triplet = normalizeRgbTriplet(rgb) || [242, 212, 166];
+  return `rgba(${triplet[0]}, ${triplet[1]}, ${triplet[2]}, ${alpha})`;
+}
+
+function applyHeroCardPalette(palette) {
+  const heroCard = $(".hero-card");
+  if (!heroCard) return;
+  if (!palette?.primary || !palette?.secondary) {
+    heroCard.style.removeProperty("--hero-card-glow-1");
+    heroCard.style.removeProperty("--hero-card-glow-2");
+    return;
+  }
+  heroCard.style.setProperty("--hero-card-glow-1", rgbaString(palette.primary, 0.24));
+  heroCard.style.setProperty("--hero-card-glow-2", rgbaString(palette.secondary, 0.22));
+}
+
+function loadImageElement(src) {
+  return new Promise((resolve, reject) => {
+    const image = new Image();
+    image.decoding = "async";
+    image.crossOrigin = "anonymous";
+    image.onload = () => resolve(image);
+    image.onerror = () => reject(new Error("Avatar image load failed."));
+    image.src = src;
+  });
+}
+
+function extractDominantAvatarColor(image) {
+  const width = Math.max(1, Math.min(40, image.naturalWidth || image.width || 40));
+  const height = Math.max(1, Math.min(40, image.naturalHeight || image.height || 40));
+  const canvas = document.createElement("canvas");
+  canvas.width = width;
+  canvas.height = height;
+  const context = canvas.getContext("2d", { willReadFrequently: true });
+  if (!context) return null;
+  context.drawImage(image, 0, 0, width, height);
+  const { data } = context.getImageData(0, 0, width, height);
+  const buckets = new Map();
+  for (let index = 0; index < data.length; index += 4) {
+    const alpha = data[index + 3] / 255;
+    if (alpha < 0.65) continue;
+    const red = data[index];
+    const green = data[index + 1];
+    const blue = data[index + 2];
+    const max = Math.max(red, green, blue);
+    const min = Math.min(red, green, blue);
+    const saturation = max === 0 ? 0 : (max - min) / max;
+    const luminance = (0.2126 * red + 0.7152 * green + 0.0722 * blue) / 255;
+    if (luminance > 0.96 || luminance < 0.08) continue;
+    const key = `${red >> 4}-${green >> 4}-${blue >> 4}`;
+    const weight = 1 + saturation * 2.6 + (1 - Math.abs(luminance - 0.58) * 1.1);
+    const bucket = buckets.get(key) || { weight: 0, red: 0, green: 0, blue: 0 };
+    bucket.weight += weight;
+    bucket.red += red * weight;
+    bucket.green += green * weight;
+    bucket.blue += blue * weight;
+    buckets.set(key, bucket);
+  }
+  let best = null;
+  for (const bucket of buckets.values()) {
+    if (!best || bucket.weight > best.weight) best = bucket;
+  }
+  if (!best || best.weight <= 0) return null;
+  return [
+    Math.round(best.red / best.weight),
+    Math.round(best.green / best.weight),
+    Math.round(best.blue / best.weight)
+  ];
+}
+
+function buildHeroPaletteFromPrimary(primary) {
+  const base = normalizeRgbTriplet(primary);
+  if (!base) return null;
+  return {
+    primary: mixRgb(base, [255, 244, 230], 0.28),
+    secondary: mixRgb(base, [236, 242, 248], 0.68)
+  };
+}
+
+async function refreshHeroCardPaletteFromAvatar(src, options = {}) {
+  const source = String(src || "").trim() || HERO_AVATAR_DEFAULT_SRC;
+  const current = readHeroAvatarPalette();
+  if (!options.force && current && state.ui.heroAvatarPaletteSource === source) {
+    applyHeroCardPalette(current);
+    return current;
+  }
+  try {
+    const image = await loadImageElement(source);
+    const dominant = extractDominantAvatarColor(image);
+    const palette = buildHeroPaletteFromPrimary(dominant || [242, 212, 166]);
+    if (!palette) return null;
+    writeHeroAvatarPalette(palette);
+    state.ui.heroAvatarPaletteSource = source;
+    applyHeroCardPalette(palette);
+    return palette;
+  } catch {
+    const fallback = buildHeroPaletteFromPrimary([242, 212, 166]);
+    applyHeroCardPalette(fallback);
+    return fallback;
   }
 }
 
@@ -2327,6 +2477,7 @@ async function handleHeroAvatarSelection(input) {
       showToast(t("avatarUploadStorageError"), true);
       return;
     }
+    state.ui.heroAvatarPaletteSource = "";
     renderHeroAvatar();
     showToast(t("avatarUploadSuccess"));
   } catch (error) {
@@ -3634,7 +3785,7 @@ function populateTransactionEditAccountSelects() {
 function populateQuickEntryL1() {
   const select = $("#quickEntryForm [name=category_l1]");
   if (!select) return;
-  const activeL1 = Object.entries(state.categories || {}).filter(([, cfg]) => cfg.active);
+  const activeL1 = getQuickEntryL1Entries();
   select.innerHTML = "";
   for (const [name, cfg] of activeL1) {
     select.appendChild(new Option(withL1Emoji(name, { bilingualDefault: true, isDefault: Boolean(cfg?.is_default) }), name));
@@ -3674,7 +3825,7 @@ function renderQuickL1Grid() {
   const grid = $("#quickL1Grid");
   const l1Select = $("#quickEntryForm [name=category_l1]");
   if (!grid || !l1Select) return;
-  const activeL1 = Object.entries(state.categories || {}).filter(([, cfg]) => cfg.active);
+  const activeL1 = getQuickEntryL1Entries();
   const selected = String(l1Select.value || "");
   grid.innerHTML = activeL1
     .map(([name, cfg]) => {
@@ -3683,12 +3834,22 @@ function renderQuickL1Grid() {
         <button class="quick-icon-btn ${isActive ? "active" : ""}" type="button" data-l1="${encodeURIComponent(name)}">
           <span class="icon">${escapeHtml(getL1EmojiSymbol(name))}</span>
           <span class="label">${escapeHtml(
-            getL1DisplayName(name, { bilingualDefault: true, isDefault: Boolean(cfg?.is_default) })
+            getL1DisplayName(name, { bilingualDefault: false, localizeDefault: true, isDefault: Boolean(cfg?.is_default) })
           )}</span>
         </button>
       `;
     })
     .join("");
+}
+
+function getQuickEntryL1Entries() {
+  return Object.entries(state.categories || {})
+    .filter(([, cfg]) => cfg.active)
+    .sort(([leftName], [rightName]) => {
+      if (leftName === "Investment") return 1;
+      if (rightName === "Investment") return -1;
+      return 0;
+    });
 }
 
 function renderQuickL2Grid() {
@@ -3707,7 +3868,7 @@ function renderQuickL2Grid() {
         <button class="quick-icon-btn ${isActive ? "active" : ""}" type="button" data-l2="${encodeURIComponent(label)}">
           <span class="icon">${escapeHtml(getL2EmojiSymbol(l1, label))}</span>
           <span class="label">${escapeHtml(
-            getL2DisplayName(label, l1, { bilingualDefault: true, isDefault: Boolean(row?.is_default) })
+            getL2DisplayName(label, l1, { bilingualDefault: false, localizeDefault: true, isDefault: Boolean(row?.is_default) })
           )}</span>
         </button>
       `;
@@ -3884,7 +4045,7 @@ async function updateQuickEntryFlow() {
       : Boolean(
           (!transferConfig.needsFrom || accountId) && (!transferConfig.needsTo || accountToId) && currency
         );
-  const amountStepVisible = isExpense ? Boolean(l1 && l2 && spendReady) : spendReady;
+  const amountStepVisible = isTransfer ? Boolean(currency) : Boolean(spendReady);
   toggleQuickStep("quickStepAmount", amountStepVisible);
   syncQuickComposerVisibility();
 
@@ -3903,6 +4064,10 @@ async function updateQuickEntryFlow() {
     applyQuickEntryMax(99999999, currency, { customHint: unassignedHint });
     return;
   }
+  if (isTransfer && transferConfig.needsFrom && !accountId) {
+    applyQuickEntryMax(99999999, currency, { customHint: unassignedHint });
+    return;
+  }
   if (isExpense || (isTransfer && transferConfig.needsFrom)) {
     await refreshQuickEntryAmountLimit(accountId, currency);
   } else {
@@ -3918,9 +4083,11 @@ function toggleQuickStep(id, visible) {
 
 function syncQuickComposerVisibility() {
   const composer = $("#quickComposerCard");
-  const amount = $("#quickStepAmount");
-  if (!composer || !amount) return;
-  const show = !amount.classList.contains("hidden");
+  const steps = ["quickStepAmount", "quickStepL1", "quickStepL2", "quickStepTransferReason"]
+    .map((id) => document.getElementById(id))
+    .filter(Boolean);
+  if (!composer || !steps.length) return;
+  const show = steps.some((node) => !node.classList.contains("hidden"));
   composer.classList.toggle("hidden", !show);
 }
 
@@ -4192,6 +4359,10 @@ function applyQuickEntryMax(maxAmount, currency, options = {}) {
   const current = clampQuickAmount(amountInput.value);
   amountInput.value = String(current);
   syncQuickAmountDisplay(current);
+  if (state.quickEntryType === "income") {
+    hint.textContent = "";
+    return;
+  }
   const customHint = String(options.customHint || "");
   if (customHint) {
     hint.textContent = customHint;
@@ -4223,16 +4394,41 @@ function sanitizeQuickAmountText(value) {
 }
 
 function syncQuickAmountDisplay(value) {
-  const amountDisplay = $("#quickAmountDisplay");
   const amountInput = $("#quickAmountInput");
+  let normalized = "";
   if (amountInput) {
-    const normalized = sanitizeQuickAmountText(String(value || "0"));
+    normalized = sanitizeQuickAmountText(String(value || "0"));
     if (normalized !== amountInput.value && normalized !== "") {
       amountInput.value = normalized;
     }
   }
-  if (!amountDisplay) return;
-  amountDisplay.textContent = formatMoney(value);
+  void syncQuickDualCurrencyDisplay(normalized || String(value || "0"));
+}
+
+async function syncQuickDualCurrencyDisplay(value) {
+  const convertedEl = $("#quickAmountConvertedValue");
+  const baseCurrencyEl = $("#quickBaseCurrencyText");
+  const sourceCurrencyEl = $("#quickCurrencyDisplayCode");
+  const currencySelect = $("#quickEntryForm [name=currency_original]");
+  if (!convertedEl || !baseCurrencyEl || !sourceCurrencyEl || !(currencySelect instanceof HTMLSelectElement)) return;
+  const sourceCurrency = ensureUICurrency(String(currencySelect.value || "USD"));
+  const baseCurrency = ensureUICurrency(state.settings?.base_currency || "USD");
+  const normalized = sanitizeQuickAmountText(String(value || "0"));
+  const amount = Number(normalized || 0);
+  sourceCurrencyEl.textContent = sourceCurrency;
+  baseCurrencyEl.textContent = baseCurrency;
+  const currentSeq = ++quickAmountFxReqSeq;
+  let convertedAmount = Number.isFinite(amount) ? amount : 0;
+  if (sourceCurrency !== baseCurrency && Number.isFinite(amount)) {
+    try {
+      const rate = await getFxRateCached(sourceCurrency, baseCurrency);
+      convertedAmount = amount * rate;
+    } catch {
+      convertedAmount = amount;
+    }
+  }
+  if (currentSeq !== quickAmountFxReqSeq) return;
+  convertedEl.textContent = formatMoney(convertedAmount);
 }
 
 function validateQuickEntryAmount() {
@@ -4869,15 +5065,12 @@ async function loadDashboard() {
   state.dashboard = dashboard;
   renderHeroSummary(dashboard);
   renderInfographics(dashboard);
+  if (state.risk) renderRiskMetrics(state.risk);
 }
 
-async function loadRisk() {
-  const risk = (await api(`/api/v1/metrics/risk?month=${state.month}`)) || {
-    crypto_exposure: 0,
-    income_volatility: 0,
-    fixed_cost_ratio: 0
-  };
-  state.risk = risk;
+function renderRiskMetrics(risk) {
+  const runway = state.dashboard?.runway_months;
+  const runwayLabel = Number.isFinite(Number(runway)) ? `${Number(runway).toFixed(1)}m` : "∞";
   $("#riskMetrics").innerHTML = `
     <article class="list-row"><div class="row-main"><strong>${t("riskCryptoExposure")}</strong><span>${
       (risk.crypto_exposure * 100).toFixed(2)
@@ -4888,7 +5081,18 @@ async function loadRisk() {
     <article class="list-row"><div class="row-main"><strong>${t("riskFixedCostRatio")}</strong><span>${
       (risk.fixed_cost_ratio * 100).toFixed(2)
     }%</span></div></article>
+    <article class="list-row"><div class="row-main"><strong>${t("metricRunwayMonths")}</strong><span>${runwayLabel}</span></div></article>
   `;
+}
+
+async function loadRisk() {
+  const risk = (await api(`/api/v1/metrics/risk?month=${state.month}`)) || {
+    crypto_exposure: 0,
+    income_volatility: 0,
+    fixed_cost_ratio: 0
+  };
+  state.risk = risk;
+  renderRiskMetrics(risk);
 }
 
 function renderInfographics(dashboard) {
@@ -5030,27 +5234,36 @@ function renderTrendChart() {
 function renderHeroSummary(dashboard) {
   const base = dashboard.base_currency || state.settings?.base_currency || "USD";
   const netWorth = Number(dashboard.net_worth || 0);
-  const runway = dashboard.runway_months;
-  const runwayLabel = Number.isFinite(Number(runway)) ? `${Number(runway).toFixed(1)}m` : "∞";
 
   const heroValueEl = $("#heroNetWorthValue");
   if (heroValueEl) {
     const currencyHint = t("heroCurrencyToggleHint");
-    heroValueEl.innerHTML = `<span class="hero-value-amount">${escapeHtml(
+    const amountHint = t(isAmountPrivacyEnabled() ? "showAmounts" : "hideAmounts");
+    heroValueEl.innerHTML = `<span class="hero-value-amount hero-value-amount-toggle" role="button" tabindex="0" title="${escapeHtml(
+      amountHint
+    )}" aria-label="${escapeHtml(amountHint)}">${escapeHtml(
       formatMoneyMasked(netWorth)
     )}</span><span class="hero-value-unit hero-value-unit-toggle" role="button" tabindex="0" title="${escapeHtml(
       currencyHint
     )}" aria-label="${escapeHtml(currencyHint)}">${escapeHtml(formatCurrencyUnit(base))}</span>`;
   }
   renderHeroAvatar();
-  renderHeroPrivacyToggleControl();
   renderAccountComposition(dashboard);
+  const netCashFlow = Number(dashboard.net_cash_flow || 0);
+  const netCashFlowTone = netCashFlow >= 0 ? "positive" : "negative";
+  const netCashFlowEl = $("#heroNetCashFlowLine");
+  if (netCashFlowEl) {
+    netCashFlowEl.className = `hero-netcashline ${netCashFlowTone}`;
+    netCashFlowEl.innerHTML = `
+      <span class="hero-netcashline-value">${renderMoneyWithUnit(formatSignedMoney(netCashFlow), formatCurrencyUnit(base))}</span>
+    `;
+  }
 
   $("#heroSubMetrics").innerHTML = `
-    <div class="hero-subcard"><div class="k">${t("metricMonthlyIncome")}</div><div class="v">${renderMoneyWithUnit(formatMoney(dashboard.monthly_income), formatCurrencyUnit(base))}</div></div>
-    <div class="hero-subcard"><div class="k">${t("metricMonthlyExpense")}</div><div class="v">${renderMoneyWithUnit(formatMoney(dashboard.monthly_expense), formatCurrencyUnit(base))}</div></div>
-    <div class="hero-subcard"><div class="k">${t("metricNetCashFlow")}</div><div class="v">${renderMoneyWithUnit(formatSignedMoney(dashboard.net_cash_flow), formatCurrencyUnit(base))}</div></div>
-    <div class="hero-subcard secondary"><div class="k">${t("metricRunwayMonths")}</div><div class="v">${runwayLabel}</div></div>
+    <div class="hero-subgrid">
+      <div class="hero-subcard"><div class="k">${t("metricMonthlyIncome")}</div><div class="v">${renderMoneyWithUnit(formatMoney(dashboard.monthly_income), formatCurrencyUnit(base))}</div></div>
+      <div class="hero-subcard"><div class="k">${t("metricMonthlyExpense")}</div><div class="v">${renderMoneyWithUnit(formatMoney(dashboard.monthly_expense), formatCurrencyUnit(base))}</div></div>
+    </div>
   `;
 }
 
@@ -5066,7 +5279,6 @@ function toggleHeroCompositionLegendMode() {
 function toggleAmountPrivacyVisibility() {
   state.ui.hideSensitiveAmounts = !Boolean(state.ui.hideSensitiveAmounts);
   persistUiState();
-  renderHeroPrivacyToggleControl();
   if (state.dashboard) {
     renderHeroSummary(state.dashboard);
     renderInfographics(state.dashboard);
@@ -6564,13 +6776,15 @@ function renderRecentExpensesSummaryBar(rows, recentRows) {
           const amount = Number(totals.get(dateKey) || 0);
           const separator = index < items.length - 1 ? `<span class="recent-expense-mini-sep" aria-hidden="true"></span>` : "";
           return `
-            <div class="recent-expense-mini-item">
+            <button class="recent-expense-mini-item" type="button" data-date="${escapeHtml(dateKey)}" aria-label="${escapeHtml(
+              `${t(item.key)} ${dateKey}`
+            )}">
               <span class="recent-expense-mini-label">${escapeHtml(t(item.key))}</span>
               <div class="recent-expense-mini-money">
                 <strong>${escapeHtml(formatCompactKMoney(amount))}</strong>
                 <span>${escapeHtml(formatCurrencyUnit(base))}</span>
               </div>
-            </div>
+            </button>
             ${separator}
           `;
         })
@@ -7089,8 +7303,7 @@ function applyI18n() {
   setText("todayCardTitle", `☀️ ${t("relativeToday")}`);
   setText("recentCompareTitle", t("recentCompareTitle"));
   setText("heroNetWorthLabel", t("metricNetWorth"));
-  renderHeroPrivacyToggleControl();
-  setText("heroCompositionLabel", t("netWorthComposition"));
+  setText("heroCompositionLabel", t("compositionShort"));
   syncHeroCompositionToggleControl();
   setText("heroLiquidLegend", t("labelLiquid"));
   setText("heroRestrictedLegend", t("labelRestricted"));
