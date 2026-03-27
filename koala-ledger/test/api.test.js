@@ -563,7 +563,7 @@ test("serves web UI shell", async () => {
   const { api } = createHarness();
   const res = await api.get("/").send();
   assert.equal(res.status, 200);
-  assert.match(res.text, /Nomad Finance OS/);
+  assert.match(res.text, /Koala Ledger/);
 });
 
 test("settings + auto FX conversion + runway/risk metrics", async () => {

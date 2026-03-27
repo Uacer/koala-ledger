@@ -7,7 +7,7 @@ const { createApp } = require("./app");
 const { SUPPORTED_CURRENCIES } = require("./constants");
 const { refreshRecentFxCache } = require("./fx");
 
-const dbPath = process.env.DB_PATH || path.join(__dirname, "..", "nomad-finance.db");
+const dbPath = process.env.DB_PATH || path.join(__dirname, "..", "koala-ledger.db");
 const db = createDb(dbPath);
 const app = createApp(db);
 const fxRefreshIntervalMs = Math.max(
@@ -18,7 +18,7 @@ const fxRefreshIntervalMs = Math.max(
 
 const port = Number.parseInt(process.env.PORT || "5001", 10);
 app.listen(port, "0.0.0.0", () => {
-  console.log(`Nomad Finance OS API running on http://localhost:${port}`);
+  console.log(`Koala Ledger API running on http://localhost:${port}`);
   void runFxRefresh("startup");
   const timer = setInterval(() => {
     void runFxRefresh("interval");

@@ -16,7 +16,7 @@ function run() {
   }
 
   const dbPath = path.resolve(
-    process.env.DB_PATH || path.join(__dirname, "..", "nomad-finance.db")
+    process.env.DB_PATH || path.join(__dirname, "..", "koala-ledger.db")
   );
   fs.mkdirSync(path.dirname(dbPath), { recursive: true });
 

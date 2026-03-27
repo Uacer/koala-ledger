@@ -1,8 +1,8 @@
 {
-  "name": "nomad-finance-os",
+  "name": "koala-ledger",
   "version": "0.1.0",
   "private": true,
-  "description": "Nomad Finance OS MVP backend",
+  "description": "Koala Ledger MVP backend",
   "main": "src/server.js",
   "scripts": {
     "start": "node src/server.js",

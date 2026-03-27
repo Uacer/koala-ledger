@@ -3752,16 +3752,16 @@ async function sendAuthCodeEmail(email, code) {
     console.log(`[auth-code] resend not configured. email=${email} code=${code}`);
     return;
   }
-  const subject = "Your Nomad Finance OS verification code";
+  const subject = "Your Koala Ledger verification code";
   const text = [
-    "Use the verification code below to sign in to Nomad Finance OS:",
+    "Use the verification code below to sign in to Koala Ledger:",
     code,
     "",
     `This code expires in ${AUTH_CODE_TTL_MINUTES} minutes.`
   ].join("\n");
   const html = `
     <div style="font-family: -apple-system, Segoe UI, sans-serif; line-height: 1.5; color: #1f2d38;">
-      <p>Use this verification code to sign in to <strong>Nomad Finance OS</strong>:</p>
+      <p>Use this verification code to sign in to <strong>Koala Ledger</strong>:</p>
       <p style="font-size: 28px; letter-spacing: 4px; font-weight: 700;">${escapeHtml(code)}</p>
       <p>This code expires in ${AUTH_CODE_TTL_MINUTES} minutes.</p>
     </div>

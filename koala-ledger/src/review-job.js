@@ -16,7 +16,7 @@ function parseCliArg(name) {
 }
 
 function run() {
-  const dbPath = process.env.DB_PATH || path.join(__dirname, "..", "nomad-finance.db");
+  const dbPath = process.env.DB_PATH || path.join(__dirname, "..", "koala-ledger.db");
   const db = createDb(dbPath);
   const nowMonth = new Date().toISOString().slice(0, 7);
   const month = normalizeMonth(parseCliArg("month") || monthOffset(nowMonth, -1));

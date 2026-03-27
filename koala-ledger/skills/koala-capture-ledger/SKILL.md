@@ -1,18 +1,18 @@
 ---
-name: nomad-capture-ledger
-description: Record expenses, income, and transfers into Nomad Finance OS when the parser/model is already available on user side. Focus on request construction and validation rules for direct transaction write APIs.
+name: koala-capture-ledger
+description: Record expenses, income, and transfers into Koala Ledger when the parser/model is already available on user side. Focus on request construction and validation rules for direct transaction write APIs.
 allowed-tools: Bash(curl *)
 ---
 
-# Nomad Capture Ledger
+# Koala Capture Ledger
 
-Record financial transactions via the Nomad Finance OS API.
+Record financial transactions via the Koala Ledger API.
 The local model/parser runs outside this skill. This skill only builds correct API requests and applies posting rules.
 
 ## Environment
 
 Required:
-- `NOMAD_API_TOKEN` — Bearer token from Settings → Agent Access
+- `KOALA_API_TOKEN` — Bearer token from Settings → Agent Access
 
 Fixed server URL:
 - `https://ledger.sainwellx.xyz`
@@ -30,12 +30,12 @@ Fixed server URL:
 
 ```sh
 curl -s "https://ledger.sainwellx.xyz/api/v1/accounts" \
-  -H "Authorization: Bearer $NOMAD_API_TOKEN"
+  -H "Authorization: Bearer $KOALA_API_TOKEN"
 ```
 
 ```sh
 curl -s "https://ledger.sainwellx.xyz/api/v1/categories" \
-  -H "Authorization: Bearer $NOMAD_API_TOKEN"
+  -H "Authorization: Bearer $KOALA_API_TOKEN"
 ```
 
 Use these to map account names -> `account_from_id`/`account_to_id` and ensure category pair is active.
@@ -66,7 +66,7 @@ Restricted cash rules:
 
 ```sh
 curl -s -X POST "https://ledger.sainwellx.xyz/api/v1/transactions" \
-  -H "Authorization: Bearer $NOMAD_API_TOKEN" \
+  -H "Authorization: Bearer $KOALA_API_TOKEN" \
   -H "Content-Type: application/json" \
   -d '{
     "date": "2026-03-21",

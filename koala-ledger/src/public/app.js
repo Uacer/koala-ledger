@@ -266,7 +266,7 @@ const I18N = {
     addExpense: "🧾 Add Expense",
     addIncome: "💰 Add Income",
     addTransfer: "🔁 Add Transfer",
-    authTitle: "Nomad Finance OS",
+    authTitle: "Koala Ledger",
     authSubtitle: "Sign in with your email verification code.",
     authEmailLabel: "Email",
     authContinueBtn: "Continue",
@@ -310,7 +310,7 @@ const I18N = {
     onboardingSavedStep2: "Account saved. You can move to the final step.",
     onboardingDefaultAccountName: "default",
     onboardingStep4Intro:
-      "Nomad Finance OS supports smooth, fast bookkeeping with your own agent. Choose whether to connect now:",
+      "Koala Ledger supports smooth, fast bookkeeping with your own agent. Choose whether to connect now:",
     onboardingHasAgentYes: "Yes, connect now",
     onboardingHasAgentNo: "No, connect later",
     onboardingEnterProduct: "Enter Product",
@@ -698,7 +698,7 @@ const I18N = {
     addExpense: "🧾 新增支出",
     addIncome: "💰 新增收入",
     addTransfer: "🔁 新增转账",
-    authTitle: "Nomad Finance OS",
+    authTitle: "Koala Ledger",
     authSubtitle: "使用邮箱验证码登录。",
     authEmailLabel: "邮箱",
     authContinueBtn: "继续",
@@ -2409,14 +2409,14 @@ async function copyTextToClipboard(text) {
 }
 
 function buildAgentSetupGuide(tokenOverride = "") {
-  const repoUrl = "https://github.com/Uacer/Nomad-Finance-OS";
-  const skillPath = "skills/nomad-capture-ledger";
+  const repoUrl = "https://github.com/Uacer/koala-ledger";
+  const skillPath = "skills/koala-capture-ledger";
   const token = String(tokenOverride || "").trim() || "<PASTE_AGENT_API_TOKEN>";
   const lang = ensureUILanguage(state.settings?.ui_language);
 
   if (lang === "zh") {
     return [
-      "请安装 `nomad-capture-ledger` skill（包含目录内全部文件）：",
+      "请安装 `koala-capture-ledger` skill（包含目录内全部文件）：",
       "",
       `- GitHub Repo: ${repoUrl}`,
       `- Skill Path: ${skillPath}`,
@@ -2425,7 +2425,7 @@ function buildAgentSetupGuide(tokenOverride = "") {
   }
 
   return [
-    "Please install the `nomad-capture-ledger` skill (include all files):",
+    "Please install the `koala-capture-ledger` skill (include all files):",
     "",
     `- GitHub Repo: ${repoUrl}`,
     `- Skill Path: ${skillPath}`,
@@ -7449,7 +7449,7 @@ function txTypeLabel(type) {
 
 // ── Dashboard drag-to-reorder ──────────────────────────────────────────────
 
-const DASH_ORDER_KEY = "nomad-dash-order";
+const DASH_ORDER_KEY = "koala-ledger-dash-order";
 const DEFAULT_DASH_ORDER = [
   "dashboardAccountsCard",
   "budgetPlanCard",

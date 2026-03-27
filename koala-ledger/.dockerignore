@@ -3,5 +3,5 @@ npm-debug.log
 .DS_Store
 .git
 .gitignore
-nomad-finance.db
+koala-ledger.db
 backups

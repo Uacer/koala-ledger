@@ -10,7 +10,7 @@ COPY README.md ./
 
 ENV NODE_ENV=production
 ENV PORT=5001
-ENV DB_PATH=/data/nomad-finance.db
+ENV DB_PATH=/data/koala-ledger.db
 ENV BACKUP_DIR=/backups
 
 RUN mkdir -p /data /backups && chown -R node:node /app /data /backups

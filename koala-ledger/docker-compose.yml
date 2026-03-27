@@ -3,17 +3,17 @@ services:
     build:
       context: .
       dockerfile: Dockerfile
-    container_name: nomad-finance-os
+    container_name: koala-ledger
     ports:
       - "5001:5001"
     environment:
       - PORT=5001
-      - DB_PATH=/data/nomad-finance.db
+      - DB_PATH=/data/koala-ledger.db
       - BACKUP_DIR=/backups
       - EXCHANGERATE_HOST_ACCESS_KEY=${EXCHANGERATE_HOST_ACCESS_KEY:-}
     volumes:
-      - nomad_data:/data
-      - nomad_backups:/backups
+      - koala_ledger_data:/data
+      - koala_ledger_backups:/backups
     healthcheck:
       test: ["CMD", "wget", "-qO-", "http://127.0.0.1:5001/health"]
       interval: 30s
@@ -23,5 +23,5 @@ services:
     restart: unless-stopped
 
 volumes:
-  nomad_data:
-  nomad_backups:
+  koala_ledger_data:
+  koala_ledger_backups:

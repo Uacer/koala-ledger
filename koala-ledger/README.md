@@ -1,4 +1,4 @@
-# Nomad Finance OS (MVP Backend)
+# Koala Ledger (MVP Backend)
 
 Web-first MVP backend implementing:
 
@@ -30,7 +30,7 @@ Web-first MVP backend implementing:
 ## Quick Start
 
 ```bash
-cd nomad-finance-os
+cd koala-ledger
 npm install
 npm start
 ```
@@ -41,7 +41,7 @@ Open `http://localhost:5001` for the mobile-first UI.
 
 Optional env:
 
-- `DB_PATH`: SQLite path (defaults to `nomad-finance.db`)
+- `DB_PATH`: SQLite path (defaults to `koala-ledger.db`)
 - `BACKUP_DIR`: backup output directory (defaults to `backups`)
 - `PORT`: API port (defaults to `5001`)
 - `EXCHANGERATE_HOST_ACCESS_KEY`: optional API key for `exchangerate.host` live FX endpoint
@@ -57,7 +57,7 @@ FX provider priority:
 ## Test
 
 ```bash
-cd nomad-finance-os
+cd koala-ledger
 npm test
 ```
 
@@ -66,14 +66,14 @@ npm test
 Generate previous month snapshot for all users:
 
 ```bash
-cd nomad-finance-os
+cd koala-ledger
 npm run generate:monthly-review
 ```
 
 Generate a specific month:
 
 ```bash
-cd nomad-finance-os
+cd koala-ledger
 npm run generate:monthly-review -- --month=2026-03
 ```
 
@@ -82,15 +82,15 @@ npm run generate:monthly-review -- --month=2026-03
 Create a consistent SQLite backup:
 
 ```bash
-cd nomad-finance-os
+cd koala-ledger
 npm run backup:db
 ```
 
 Restore from a backup file:
 
 ```bash
-cd nomad-finance-os
-BACKUP_FILE=./backups/nomad-finance-2026-03-10T11-30-00-000Z.db npm run restore:db
+cd koala-ledger
+BACKUP_FILE=./backups/koala-ledger-2026-03-10T11-30-00-000Z.db npm run restore:db
 ```
 
 ## Docker
@@ -98,7 +98,7 @@ BACKUP_FILE=./backups/nomad-finance-2026-03-10T11-30-00-000Z.db npm run restore:
 Build and run with Docker Compose:
 
 ```bash
-cd nomad-finance-os
+cd koala-ledger
 docker compose up -d --build
 ```
 
@@ -110,14 +110,14 @@ The container exposes `http://localhost:5001` and persists:
 Run backup inside container:
 
 ```bash
-cd nomad-finance-os
+cd koala-ledger
 docker compose exec app npm run backup:db
 ```
 
 Stop:
 
 ```bash
-cd nomad-finance-os
+cd koala-ledger
 docker compose down
 ```
 

@@ -5,16 +5,16 @@ Base URL: `https://ledger.sainwellx.xyz`
 Headers:
 
 - `content-type: application/json`
-- `authorization: Bearer ${NOMAD_API_TOKEN}`
+- `authorization: Bearer ${KOALA_API_TOKEN}`
 
 Dev-only fallback (when backend allows bypass):
 
-- `x-user-id: ${NOMAD_USER_ID:-1}`
+- `x-user-id: ${KOALA_USER_ID:-1}`
 
 ## Scope
 
 This contract is for direct transaction write flow.
-Parser/model is assumed to run on user side (outside Nomad backend AI parse APIs).
+Parser/model is assumed to run on user side (outside Koala Ledger backend AI parse APIs).
 
 ## 1) Get accounts (for ID mapping)
 
@@ -161,7 +161,7 @@ Success `201`:
 - `400 Transfer requires ...` (reason-specific)
   - Action: adjust from/to fields by transfer rule and retry.
 - `401 Authentication required.`
-  - Action: check `NOMAD_API_TOKEN`.
+  - Action: check `KOALA_API_TOKEN`.
 - `403 Insufficient scope.`
   - Action: token needs `transactions:write` (and read scopes for lookup endpoints).
 
