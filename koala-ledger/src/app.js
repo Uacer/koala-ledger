@@ -527,7 +527,16 @@ function createApp(db) {
       theme: z.enum(["system", "light", "dark", "aurora"]).optional(),
       currency_display_mode: z.enum(["code", "symbol"]).optional(),
       living_country_code: z.string().max(8).optional(),
-      monthly_income_band: z.enum(Object.keys(INCOME_BAND_MIDPOINTS)).optional()
+      monthly_income_band: z.enum(Object.keys(INCOME_BAND_MIDPOINTS)).optional(),
+      hero_avatar_data_url: z.string().max(8 * 1024 * 1024).optional(),
+      hero_avatar_palette: z
+        .object({
+          primary: z.array(z.number().int().min(0).max(255)).length(3),
+          secondary: z.array(z.number().int().min(0).max(255)).length(3)
+        })
+        .nullable()
+        .optional(),
+      dashboard_order: z.array(z.string().min(1).max(80)).max(20).optional()
     });
     const parsed = schema.safeParse(req.body);
     if (!parsed.success) {
@@ -563,11 +572,17 @@ function createApp(db) {
       }
     }
     const monthlyIncomeBand = payload.monthly_income_band || current.monthly_income_band;
+    const heroAvatarDataUrl =
+      payload.hero_avatar_data_url !== undefined ? String(payload.hero_avatar_data_url || "") : current.hero_avatar_data_url;
+    const heroAvatarPalette =
+      payload.hero_avatar_palette !== undefined ? payload.hero_avatar_palette : current.hero_avatar_palette;
+    const dashboardOrder = payload.dashboard_order !== undefined ? payload.dashboard_order : current.dashboard_order;
     db.prepare(
       `
         UPDATE user_settings
         SET base_currency = ?, timezone = ?, ui_language = ?, theme = ?, currency_display_mode = ?,
-            living_country_code = ?, monthly_income_band = ?, updated_at = CURRENT_TIMESTAMP
+            living_country_code = ?, monthly_income_band = ?, hero_avatar_data_url = ?, hero_avatar_palette_json = ?,
+            dashboard_order_json = ?, updated_at = CURRENT_TIMESTAMP
         WHERE user_id = ?
       `
     ).run(
@@ -578,6 +593,9 @@ function createApp(db) {
       currencyDisplayMode,
       livingCountryCode,
       monthlyIncomeBand,
+      heroAvatarDataUrl,
+      serializeSettingsJson(heroAvatarPalette),
+      serializeSettingsJson(dashboardOrder),
       req.userId
     );
     res.json(getUserSettings(db, req.userId));
@@ -1991,6 +2009,9 @@ function getUserSettings(db, userId) {
           currency_display_mode,
           living_country_code,
           monthly_income_band,
+          hero_avatar_data_url,
+          hero_avatar_palette_json,
+          dashboard_order_json,
           onboarding_completed,
           onboarding_current_step,
           onboarding_completed_at
@@ -2019,10 +2040,53 @@ function getUserSettings(db, userId) {
     monthly_income_band: INCOME_BAND_MIDPOINTS[String(row.monthly_income_band || "")]
       ? String(row.monthly_income_band)
       : DEFAULT_INCOME_BAND,
+    hero_avatar_data_url: typeof row.hero_avatar_data_url === "string" ? row.hero_avatar_data_url : "",
+    hero_avatar_palette: normalizeHeroAvatarPalette(row.hero_avatar_palette_json),
+    dashboard_order: normalizeDashboardOrderPreference(row.dashboard_order_json),
     onboarding_completed: Number(row.onboarding_completed || 0) === 1,
     onboarding_current_step: normalizeOnboardingStep(row.onboarding_current_step || "step1"),
     onboarding_completed_at: row.onboarding_completed_at || null
   };
+}
+
+function serializeSettingsJson(value) {
+  if (value == null) return "";
+  try {
+    return JSON.stringify(value);
+  } catch {
+    return "";
+  }
+}
+
+function normalizeHeroAvatarPalette(value) {
+  if (!value) return null;
+  try {
+    const parsed = typeof value === "string" ? JSON.parse(value) : value;
+    const primary = normalizeRgbTriplet(parsed?.primary);
+    const secondary = normalizeRgbTriplet(parsed?.secondary);
+    if (!primary || !secondary) return null;
+    return { primary, secondary };
+  } catch {
+    return null;
+  }
+}
+
+function normalizeDashboardOrderPreference(value) {
+  if (!value) return [];
+  try {
+    const parsed = typeof value === "string" ? JSON.parse(value) : value;
+    if (!Array.isArray(parsed)) return [];
+    return parsed.map((item) => String(item || "").trim()).filter(Boolean).slice(0, 20);
+  } catch {
+    return [];
+  }
+}
+
+function normalizeRgbTriplet(value) {
+  if (!Array.isArray(value) || value.length !== 3) return null;
+  const numbers = value.map((part) => Number(part));
+  if (numbers.some((part) => !Number.isInteger(part) || part < 0 || part > 255)) return null;
+  return numbers;
 }
 
 function normalizeOnboardingStep(value) {

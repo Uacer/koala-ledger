@@ -20,6 +20,9 @@ function runMigrations(db) {
   ensureColumn(db, "user_settings", "currency_display_mode", "TEXT NOT NULL DEFAULT 'code'");
   ensureColumn(db, "user_settings", "living_country_code", "TEXT NOT NULL DEFAULT ''");
   ensureColumn(db, "user_settings", "monthly_income_band", "TEXT NOT NULL DEFAULT '8000_20000'");
+  ensureColumn(db, "user_settings", "hero_avatar_data_url", "TEXT NOT NULL DEFAULT ''");
+  ensureColumn(db, "user_settings", "hero_avatar_palette_json", "TEXT NOT NULL DEFAULT ''");
+  ensureColumn(db, "user_settings", "dashboard_order_json", "TEXT NOT NULL DEFAULT ''");
   ensureColumn(db, "user_settings", "onboarding_completed", "INTEGER NOT NULL DEFAULT 0");
   ensureColumn(db, "user_settings", "onboarding_current_step", "TEXT NOT NULL DEFAULT 'step1'");
   ensureColumn(db, "user_settings", "onboarding_completed_at", "TEXT");
@@ -299,9 +302,10 @@ function ensureUserAndSeedDefaults(db, userId) {
     `
       INSERT OR IGNORE INTO user_settings (
         user_id, base_currency, timezone, ui_language, theme, currency_display_mode,
-        living_country_code, monthly_income_band, onboarding_completed, onboarding_current_step, onboarding_completed_at
+        living_country_code, monthly_income_band, hero_avatar_data_url, hero_avatar_palette_json,
+        dashboard_order_json, onboarding_completed, onboarding_current_step, onboarding_completed_at
       )
-      VALUES (?, 'USD', 'UTC', 'en', 'system', 'code', '', '8000_20000', 0, 'step1', NULL)
+      VALUES (?, 'USD', 'UTC', 'en', 'system', 'code', '', '8000_20000', '', '', '', 0, 'step1', NULL)
     `
   ).run(userId);
 

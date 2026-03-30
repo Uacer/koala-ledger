@@ -2278,15 +2278,15 @@ function renderHeroAvatar() {
 }
 
 function readHeroAvatarSrc() {
-  try {
-    const raw = localStorage.getItem(HERO_AVATAR_STORAGE_KEY);
-    return raw ? String(raw) : HERO_AVATAR_DEFAULT_SRC;
-  } catch {
-    return HERO_AVATAR_DEFAULT_SRC;
-  }
+  const remote = String(state.settings?.hero_avatar_data_url || "").trim();
+  if (remote) return remote;
+  return HERO_AVATAR_DEFAULT_SRC;
 }
 
 function writeHeroAvatarSrc(value) {
+  if (state.settings) {
+    state.settings.hero_avatar_data_url = String(value || "").trim();
+  }
   try {
     localStorage.setItem(HERO_AVATAR_STORAGE_KEY, value);
     return true;
@@ -2296,25 +2296,43 @@ function writeHeroAvatarSrc(value) {
 }
 
 function readHeroAvatarPalette() {
-  try {
-    const raw = localStorage.getItem(HERO_AVATAR_PALETTE_STORAGE_KEY);
-    if (!raw) return null;
-    const parsed = JSON.parse(raw);
-    const primary = normalizeRgbTriplet(parsed?.primary);
-    const secondary = normalizeRgbTriplet(parsed?.secondary);
-    if (!primary || !secondary) return null;
-    return { primary, secondary };
-  } catch {
-    return null;
-  }
+  const remote = normalizeRgbPalette(state.settings?.hero_avatar_palette);
+  if (remote) return remote;
+  return null;
 }
 
 function writeHeroAvatarPalette(palette) {
+  const normalized = normalizeRgbPalette(palette);
+  if (state.settings) {
+    state.settings.hero_avatar_palette = normalized;
+  }
   try {
-    localStorage.setItem(HERO_AVATAR_PALETTE_STORAGE_KEY, JSON.stringify(palette));
+    localStorage.setItem(HERO_AVATAR_PALETTE_STORAGE_KEY, JSON.stringify(normalized));
     return true;
   } catch {
     return false;
+  }
+}
+
+function normalizeRgbPalette(value) {
+  const primary = normalizeRgbTriplet(value?.primary);
+  const secondary = normalizeRgbTriplet(value?.secondary);
+  if (!primary || !secondary) return null;
+  return { primary, secondary };
+}
+
+async function syncUserPreferenceSettings(patch, options = {}) {
+  if (!state.auth?.authenticated) return null;
+  try {
+    const updated = await api("/api/v1/settings", {
+      method: "PUT",
+      body: JSON.stringify(patch)
+    });
+    state.settings = { ...(state.settings || {}), ...(updated || {}) };
+    return updated;
+  } catch (error) {
+    if (!options.silent) showErrorToast(error);
+    return null;
   }
 }
 
@@ -2494,7 +2512,16 @@ async function handleHeroAvatarSelection(input) {
       return;
     }
     state.ui.heroAvatarPaletteSource = "";
+    const palette = await refreshHeroCardPaletteFromAvatar(dataUrl, { force: true });
+    if (palette) writeHeroAvatarPalette(palette);
     renderHeroAvatar();
+    void syncUserPreferenceSettings(
+      {
+        hero_avatar_data_url: dataUrl,
+        hero_avatar_palette: palette || null
+      },
+      { silent: true }
+    );
     showToast(t("avatarUploadSuccess"));
   } catch (error) {
     showErrorToast(error);
@@ -3445,6 +3472,9 @@ async function loadSettings() {
     currency_display_mode: "code",
     living_country_code: "",
     monthly_income_band: "8000_20000",
+    hero_avatar_data_url: "",
+    hero_avatar_palette: null,
+    dashboard_order: [],
     onboarding_completed: false,
     onboarding_current_step: "step1"
   };
@@ -3483,12 +3513,18 @@ async function loadSettings() {
   state.settings.currency_display_mode = currencyDisplayMode;
   state.settings.living_country_code = String(state.settings.living_country_code || "").trim().toUpperCase();
   state.settings.monthly_income_band = ensureOnboardingIncomeBand(state.settings.monthly_income_band || "8000_20000");
+  state.settings.hero_avatar_data_url = String(state.settings.hero_avatar_data_url || "").trim();
+  state.settings.hero_avatar_palette = normalizeRgbPalette(state.settings.hero_avatar_palette);
+  state.settings.dashboard_order = Array.isArray(state.settings.dashboard_order)
+    ? state.settings.dashboard_order.map((item) => String(item || "").trim()).filter(Boolean)
+    : [];
   state.settings.onboarding_completed = Boolean(state.settings.onboarding_completed);
   state.settings.onboarding_current_step = normalizeOnboardingStep(state.settings.onboarding_current_step || "step1");
   state.onboarding.countryCode = state.settings.living_country_code || state.onboarding.countryCode;
   state.onboarding.timezone = state.settings.timezone || state.onboarding.timezone;
   state.onboarding.baseCurrency = uiBase;
   state.onboarding.incomeBand = ensureOnboardingIncomeBand(state.settings.monthly_income_band || state.onboarding.incomeBand);
+  applyDashboardOrder();
   updateAccountCurrencyBadges();
   const accountCreateSheet = $("#accountCreateSheet");
   const accountForm = $("#accountForm");
@@ -7933,8 +7969,9 @@ const DEFAULT_DASH_ORDER = [
 function applyDashboardOrder() {
   const container = document.getElementById("dashboardSortable");
   if (!container) return;
-  let order;
-  try { order = JSON.parse(localStorage.getItem(DASH_ORDER_KEY) || "null"); } catch { order = null; }
+  const order = Array.isArray(state.settings?.dashboard_order) && state.settings.dashboard_order.length
+    ? state.settings.dashboard_order
+    : null;
   const hasCustomOrder = Array.isArray(order) && order.length > 0;
   const targetOrder = hasCustomOrder ? order : DEFAULT_DASH_ORDER;
   if (!Array.isArray(targetOrder) || !targetOrder.length) return;
@@ -7960,7 +7997,8 @@ function saveDashboardOrder() {
   const container = document.getElementById("dashboardSortable");
   if (!container) return;
   const ids = [...container.querySelectorAll("[data-sort-id]")].map(el => el.dataset.sortId);
-  try { localStorage.setItem(DASH_ORDER_KEY, JSON.stringify(ids)); } catch {}
+  if (state.settings) state.settings.dashboard_order = ids;
+  void syncUserPreferenceSettings({ dashboard_order: ids }, { silent: true });
 }
 
 function initDashboardDrag() {

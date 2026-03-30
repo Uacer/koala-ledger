@@ -698,6 +698,68 @@ test("settings persists ui_language", async () => {
   assert.equal(after.body.ui_language, "zh");
 });
 
+test("settings persist avatar and dashboard order preferences", async () => {
+  const { api } = createHarness();
+  const payload = {
+    hero_avatar_data_url: "data:image/svg+xml;base64,ZmFrZQ==",
+    hero_avatar_palette: {
+      primary: [120, 80, 40],
+      secondary: [210, 220, 230]
+    },
+    dashboard_order: ["riskCard", "recentExpensesCard", "dashboardAccountsCard"]
+  };
+
+  const update = await api.put("/api/v1/settings").send(payload);
+  assert.equal(update.status, 200);
+  assert.equal(update.body.hero_avatar_data_url, payload.hero_avatar_data_url);
+  assert.deepEqual(update.body.hero_avatar_palette, payload.hero_avatar_palette);
+  assert.deepEqual(update.body.dashboard_order, payload.dashboard_order);
+
+  const after = await api.get("/api/v1/settings").send();
+  assert.equal(after.status, 200);
+  assert.equal(after.body.hero_avatar_data_url, payload.hero_avatar_data_url);
+  assert.deepEqual(after.body.hero_avatar_palette, payload.hero_avatar_palette);
+  assert.deepEqual(after.body.dashboard_order, payload.dashboard_order);
+});
+
+test("settings preferences are isolated per user", async () => {
+  const { rawApi } = createHarness();
+  const apiUser1 = createBypassApiClient(rawApi, 1);
+  const apiUser2 = createBypassApiClient(rawApi, 2);
+
+  const user1Res = await apiUser1.put("/api/v1/settings").send({
+    hero_avatar_data_url: "data:image/svg+xml;base64,dXNlcjE=",
+    hero_avatar_palette: {
+      primary: [140, 90, 60],
+      secondary: [220, 225, 235]
+    },
+    dashboard_order: ["todayExpensesCard", "riskCard"]
+  });
+  assert.equal(user1Res.status, 200);
+
+  const user2Initial = await apiUser2.get("/api/v1/settings").send();
+  assert.equal(user2Initial.status, 200);
+  assert.equal(user2Initial.body.hero_avatar_data_url, "");
+  assert.equal(user2Initial.body.hero_avatar_palette, null);
+  assert.deepEqual(user2Initial.body.dashboard_order, []);
+
+  const user2Res = await apiUser2.put("/api/v1/settings").send({
+    hero_avatar_data_url: "data:image/svg+xml;base64,dXNlcjI=",
+    dashboard_order: ["recentCompareCard", "budgetPlanCard"]
+  });
+  assert.equal(user2Res.status, 200);
+
+  const user1After = await apiUser1.get("/api/v1/settings").send();
+  assert.equal(user1After.status, 200);
+  assert.equal(user1After.body.hero_avatar_data_url, "data:image/svg+xml;base64,dXNlcjE=");
+  assert.deepEqual(user1After.body.dashboard_order, ["todayExpensesCard", "riskCard"]);
+
+  const user2After = await apiUser2.get("/api/v1/settings").send();
+  assert.equal(user2After.status, 200);
+  assert.equal(user2After.body.hero_avatar_data_url, "data:image/svg+xml;base64,dXNlcjI=");
+  assert.deepEqual(user2After.body.dashboard_order, ["recentCompareCard", "budgetPlanCard"]);
+});
+
 test("settings always forces light theme", async () => {
   const { api } = createHarness();
   const initial = await api.get("/api/v1/settings").send();
