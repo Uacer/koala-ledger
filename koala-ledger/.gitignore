@@ -3,3 +3,5 @@ koala-ledger.db
 backups/
 .env
 *.pre-restore-*
+*.pre-reset-*
+.server.log

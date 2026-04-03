@@ -278,6 +278,8 @@ const I18N = {
     authSubtitle: "Sign in with your email verification code.",
     authEmailLabel: "Email",
     authContinueBtn: "Continue",
+    authSendCodeBtn: "Send verification code",
+    authVerifyCodeBtn: "Verify and sign in",
     authCodeLabel: "Verification Code",
     authHint: "We'll send a 6-digit code that expires in 10 minutes.",
     authSent: "Verification code sent. Check your inbox.",
@@ -287,6 +289,7 @@ const I18N = {
     authResendBtn: "Resend verification code",
     authSignedIn: "Signed in successfully.",
     authCodeInvalid: "Verification code is invalid or expired.",
+    authCodeRequired: "Enter the verification code, or wait and use resend.",
     authTooMany: "Too many attempts. Please try again later.",
     authEmailFailed: "Email delivery failed. Please try again.",
     authRequestFailed: "Failed to request verification code.",
@@ -720,6 +723,8 @@ const I18N = {
     authSubtitle: "使用邮箱验证码登录。",
     authEmailLabel: "邮箱",
     authContinueBtn: "继续",
+    authSendCodeBtn: "发送验证码",
+    authVerifyCodeBtn: "验证并登录",
     authCodeLabel: "验证码",
     authHint: "我们会发送一个 10 分钟内有效的 6 位验证码。",
     authSent: "验证码已发送，请检查邮箱。",
@@ -729,6 +734,7 @@ const I18N = {
     authResendBtn: "重新发送验证码",
     authSignedIn: "登录成功。",
     authCodeInvalid: "验证码无效或已过期。",
+    authCodeRequired: "请输入验证码，或等待后点击重新发送。",
     authTooMany: "操作过于频繁，请稍后再试。",
     authEmailFailed: "邮件发送失败，请稍后重试。",
     authRequestFailed: "验证码发送失败，请重试。",
@@ -3210,7 +3216,7 @@ function renderAuthGate() {
   }
 
   if (continueBtn instanceof HTMLButtonElement) {
-    continueBtn.textContent = t("authContinueBtn");
+    continueBtn.textContent = isCodeStep ? t("authVerifyCodeBtn") : t("authSendCodeBtn");
     continueBtn.disabled = Boolean(state.auth.submitting);
   }
 
@@ -3349,7 +3355,12 @@ async function submitAuthGateForm(event) {
     .replace(/\s+/g, "");
 
   if (!email) return;
-  if (isCodeStep && !code) return;
+  if (isCodeStep && !code) {
+    const message = t("authCodeRequired");
+    setAuthMessage(message, { error: true });
+    showToast(message, true);
+    return;
+  }
 
   state.auth.submitting = true;
   setAuthMessage("");

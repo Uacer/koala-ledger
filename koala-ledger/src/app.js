@@ -309,12 +309,13 @@ function createApp(db) {
     const code = randomAuthCode();
     const codeHash = hashAuthCode(email, code);
     const expiresAt = new Date(Date.now() + AUTH_CODE_TTL_MINUTES * 60 * 1000).toISOString();
-    insertAuthEmailCodeStmt.run(user.id, email, codeHash, expiresAt, ip, userAgent);
     try {
       await sendAuthCodeEmail(email, code);
     } catch (error) {
+      revokePendingAuthEmailCodes(db, user.id);
       return res.status(502).json({ error: String(error?.message || "Email delivery failed.") });
     }
+    insertAuthEmailCodeStmt.run(user.id, email, codeHash, expiresAt, ip, userAgent);
     return res.json({
       ok: true,
       message: "If this email is valid, a verification code has been sent."
@@ -3813,8 +3814,7 @@ async function sendAuthCodeEmail(email, code) {
   const resendApiKey = String(process.env.RESEND_API_KEY || "").trim();
   const resendFrom = String(process.env.RESEND_FROM_EMAIL || "").trim();
   if (!resendApiKey || !resendFrom) {
-    console.log(`[auth-code] resend not configured. email=${email} code=${code}`);
-    return;
+    throw new Error("Email delivery is not configured. Missing RESEND_API_KEY or RESEND_FROM_EMAIL.");
   }
   const subject = "Your Koala Ledger verification code";
   const text = [

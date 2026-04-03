@@ -10,7 +10,11 @@ services:
       - PORT=5001
       - DB_PATH=/data/koala-ledger.db
       - BACKUP_DIR=/backups
+      - APP_BASE_URL=${APP_BASE_URL:-}
       - EXCHANGERATE_HOST_ACCESS_KEY=${EXCHANGERATE_HOST_ACCESS_KEY:-}
+      - EXCHANGERATE_HOST_API_KEY=${EXCHANGERATE_HOST_API_KEY:-}
+      - RESEND_API_KEY=${RESEND_API_KEY:-}
+      - RESEND_FROM_EMAIL=${RESEND_FROM_EMAIL:-}
     volumes:
       - koala_ledger_data:/data
       - koala_ledger_backups:/backups
