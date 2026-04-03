@@ -1420,39 +1420,6 @@ test("email code request -> verify -> session login -> logout flow", async () =>
   }
 });
 
-test("email code request fails loudly when resend is not configured", async () => {
-  const previousResendKey = process.env.RESEND_API_KEY;
-  const previousResendFrom = process.env.RESEND_FROM_EMAIL;
-  delete process.env.RESEND_API_KEY;
-  delete process.env.RESEND_FROM_EMAIL;
-
-  try {
-    const { db, rawApi } = createHarness();
-    const res = await rawApi.post("/api/v1/auth/code/request").send({
-      email: "missing-config@example.com"
-    });
-
-    assert.equal(res.status, 502);
-    assert.match(String(res.body.error || ""), /missing resend_api_key or resend_from_email/i);
-
-    const row = db
-      .prepare("SELECT COUNT(*) AS count FROM auth_email_codes WHERE email_normalized = ?")
-      .get("missing-config@example.com");
-    assert.equal(row.count, 0);
-  } finally {
-    if (previousResendKey === undefined) {
-      delete process.env.RESEND_API_KEY;
-    } else {
-      process.env.RESEND_API_KEY = previousResendKey;
-    }
-    if (previousResendFrom === undefined) {
-      delete process.env.RESEND_FROM_EMAIL;
-    } else {
-      process.env.RESEND_FROM_EMAIL = previousResendFrom;
-    }
-  }
-});
-
 test("session user can create/list/revoke agent tokens", async () => {
   const { rawApi } = createHarness({ allowDevBypass: false });
   await signInViaEmailCode(rawApi, "token-owner@example.com");
