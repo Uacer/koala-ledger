@@ -6,6 +6,18 @@ const state = {
   settings: null,
   agentTokens: [],
   transactions: [],
+  transactionRecords: {
+    rows: [],
+    loading: false,
+    hasMore: true,
+    offset: 0,
+    pageSize: 40
+  },
+  transactionFilterSummary: {
+    loading: false,
+    expenseTotal: 0,
+    expenseCount: 0
+  },
   dashboard: null,
   risk: null,
   utilityReturnSheet: "",
@@ -568,6 +580,11 @@ const I18N = {
     compositionShort: "Composition",
     txFilterApply: "Apply",
     txFilterReset: "Reset",
+    txFilterExpenseSummary: "Spent {amount} {currency} across {count} expenses",
+    txFilterExpenseSummaryLoading: "Calculating filtered spending...",
+    txListLoadingMore: "Loading more transactions...",
+    txListLoadMoreHint: "Scroll down to load more",
+    txListAllLoaded: "All transactions loaded",
     recentSpendToday: "Today",
     recentSpendYesterday: "Yesterday",
     recentSpendDayBefore: "2d ago",
@@ -1008,6 +1025,11 @@ const I18N = {
     compositionShort: "Composition",
     txFilterApply: "筛选",
     txFilterReset: "重置",
+    txFilterExpenseSummary: "当前筛选共支出 {amount} {currency}，共 {count} 笔",
+    txFilterExpenseSummaryLoading: "正在计算筛选后的总花费...",
+    txListLoadingMore: "正在加载更多交易...",
+    txListLoadMoreHint: "下滑加载更多",
+    txListAllLoaded: "已经加载完全部交易",
     recentSpendToday: "今天",
     recentSpendYesterday: "昨天",
     recentSpendDayBefore: "前天",
@@ -1114,11 +1136,13 @@ const MONEY_FORMATTER = new Intl.NumberFormat(undefined, {
   minimumFractionDigits: 2,
   maximumFractionDigits: 2
 });
+const TRANSACTION_RECORDS_PAGE_SIZE = 40;
 let quickEntryLimitReqSeq = 0;
 let quickAmountFxReqSeq = 0;
 let authResendTimer = null;
 let topbarCompactRaf = 0;
 let recentCompareChartRaf = 0;
+let transactionListObserver = null;
 const systemThemeMedia = window.matchMedia ? window.matchMedia("(prefers-color-scheme: dark)") : null;
 
 const $ = (selector) => document.querySelector(selector);
@@ -1278,7 +1302,7 @@ function bindUI() {
     transactionFilterForm.addEventListener("submit", async (event) => {
       event.preventDefault();
       syncTransactionFiltersFromInputs();
-      syncTransactionAdvancedFilters();
+      syncTransactionAdvancedFilters(false);
       await loadTransactions();
     });
   }
@@ -1688,6 +1712,7 @@ function bindUI() {
     if (!Number.isInteger(id) || id <= 0) return;
     openTransactionDetailSheet(id);
   });
+  setupTransactionListInfiniteScroll();
   const acctPeriodTabs = document.getElementById("acctPeriodTabs");
   if (acctPeriodTabs) {
     acctPeriodTabs.addEventListener("click", (event) => {
@@ -1947,10 +1972,14 @@ function isTransactionRecordsOnlyMode() {
 
 function closeTransactionRecordsOnlyMode() {
   setTransactionRecordsOnlyMode(false);
+  renderTransactionList(state.transactions || [], { expenseOnly: false });
+  renderTransactionListStatus();
+  renderTransactionFilterSummary();
 }
 
 async function openTransactionRecordsPanel(presetFilters = null) {
   resetTransactionFilters();
+  resetTransactionRecordsState();
   syncTransactionAdvancedFilters(false);
   if (presetFilters && typeof presetFilters === "object") {
     state.txFilters = {
@@ -1963,10 +1992,27 @@ async function openTransactionRecordsPanel(presetFilters = null) {
   setTransactionRecordsOnlyMode(true);
   openUtilityPanel("transactionsPanel");
   try {
-    await loadTransactions({ expenseOnly: false });
+    await loadTransactions({ expenseOnly: false, recordsOnly: true, reset: true });
   } catch (error) {
     showErrorToast(error);
   }
+}
+
+function setupTransactionListInfiniteScroll() {
+  const sentinel = $("#transactionListSentinel");
+  if (!sentinel || typeof IntersectionObserver !== "function") return;
+  if (transactionListObserver) transactionListObserver.disconnect();
+  transactionListObserver = new IntersectionObserver(
+    (entries) => {
+      const entry = entries[0];
+      if (!entry?.isIntersecting) return;
+      if (!isTransactionRecordsOnlyMode()) return;
+      if (state.transactionRecords.loading || !state.transactionRecords.hasMore) return;
+      void loadMoreTransactionRecords({ reset: false });
+    },
+    { root: null, rootMargin: "240px 0px" }
+  );
+  transactionListObserver.observe(sentinel);
 }
 
 function openSheet(id, options = {}) {
@@ -1982,6 +2028,8 @@ function openSheet(id, options = {}) {
     updateQuickDateDisplay();
     const amountInput = $("#quickEntryForm [name=amount_original]");
     if (amountInput) amountInput.value = "0";
+    const noteInput = $("#quickEntryForm [name=note]");
+    if (noteInput instanceof HTMLInputElement) noteInput.value = "";
     syncQuickAmountDisplay(0);
     setQuickEntryType(state.quickEntryType || "expense");
     void updateQuickEntryFlow();
@@ -2338,27 +2386,25 @@ async function syncUserPreferenceSettings(patch, options = {}) {
 
 function openQuickDatePicker(input) {
   if (!(input instanceof HTMLInputElement)) return;
-  const invokeNativePicker = () => {
-    try {
-      if (typeof input.showPicker === "function") {
-        input.showPicker();
-        return;
-      }
-    } catch {
-      // Some mobile browsers expose showPicker but reject it here.
+  try {
+    if (typeof input.showPicker === "function") {
+      input.showPicker();
+      return;
     }
-    try {
-      input.click();
-    } catch {
-      // ignore click fallback failure
-    }
-    input.focus({ preventScroll: true });
-  };
-  if (typeof requestAnimationFrame === "function") {
-    requestAnimationFrame(invokeNativePicker);
-    return;
+  } catch {
+    // Some mobile browsers expose showPicker but reject it here.
   }
-  setTimeout(invokeNativePicker, 0);
+  try {
+    input.click();
+    return;
+  } catch {
+    // ignore click fallback failure
+  }
+  try {
+    input.focus({ preventScroll: true });
+  } catch {
+    input.focus();
+  }
 }
 
 function normalizeRgbTriplet(value) {
@@ -4667,6 +4713,8 @@ async function submitQuickEntryForm(event) {
       closeSheet("quickEntrySheet");
       const amountInput = $("#quickEntryForm [name=amount_original]");
       if (amountInput) amountInput.value = "0";
+      const noteInput = $("#quickEntryForm [name=note]");
+      if (noteInput instanceof HTMLInputElement) noteInput.value = "";
       syncQuickAmountDisplay(0);
       validateQuickEntryAmount();
     } catch (error) {
@@ -5852,7 +5900,11 @@ async function getLinkedTransactionCount(accountId) {
 }
 
 function getTransactionById(transactionId) {
-  return (state.transactions || []).find((row) => row.id === transactionId) || null;
+  return (
+    (state.transactions || []).find((row) => row.id === transactionId) ||
+    (state.transactionRecords?.rows || []).find((row) => row.id === transactionId) ||
+    null
+  );
 }
 
 function openTransactionDetailSheet(transactionId) {
@@ -6235,15 +6287,16 @@ function populateTransactionFilterCategorySelect() {
   select.value = nextValue;
 }
 
-async function loadTransactionsWithOptions(options = {}) {
-  const expenseOnly =
-    typeof options.expenseOnly === "boolean" ? options.expenseOnly : isTransactionRecordsOnlyMode();
+function buildTransactionRequestParams(options = {}) {
   const params = new URLSearchParams();
   const start = normalizeTransactionFilterDate(state.txFilters?.start);
   const end = normalizeTransactionFilterDate(state.txFilters?.end);
+  const forceAll = Boolean(options.forceAll);
   if (start || end) {
     if (start) params.set("start", start);
     if (end) params.set("end", end);
+  } else if (forceAll) {
+    params.set("all", "1");
   } else {
     params.set("month", state.month);
   }
@@ -6251,6 +6304,152 @@ async function loadTransactionsWithOptions(options = {}) {
   if (["expense", "income", "transfer"].includes(type)) params.set("type", type);
   const categoryL1 = String(state.txFilters?.categoryL1 || "").trim();
   if (categoryL1) params.set("category_l1", categoryL1);
+  if (options.includePagination) {
+    params.set("limit", String(options.limit || TRANSACTION_RECORDS_PAGE_SIZE));
+    params.set("offset", String(options.offset || 0));
+  }
+  return params;
+}
+
+function resetTransactionRecordsState() {
+  state.transactionRecords = {
+    rows: [],
+    loading: false,
+    hasMore: true,
+    offset: 0,
+    pageSize: TRANSACTION_RECORDS_PAGE_SIZE
+  };
+}
+
+function renderTransactionFilterSummary() {
+  const summaryEl = $("#transactionFilterSummary");
+  if (!summaryEl) return;
+  const amount = Number(state.transactionFilterSummary?.expenseTotal || 0);
+  const count = Number(state.transactionFilterSummary?.expenseCount || 0);
+  if (state.transactionFilterSummary?.loading) {
+    summaryEl.textContent = t("txFilterExpenseSummaryLoading");
+    summaryEl.classList.remove("hidden");
+    return;
+  }
+  summaryEl.textContent = t("txFilterExpenseSummary", {
+    amount: formatMoney(amount),
+    currency: formatCurrencyUnit(state.settings?.base_currency || "USD"),
+    count
+  });
+  summaryEl.classList.remove("hidden");
+}
+
+async function refreshTransactionFilterSummary(options = {}) {
+  state.transactionFilterSummary.loading = true;
+  renderTransactionFilterSummary();
+  try {
+    let rows = [];
+    const recordsOnly =
+      typeof options.recordsOnly === "boolean" ? options.recordsOnly : isTransactionRecordsOnlyMode();
+    if (recordsOnly) {
+      const params = buildTransactionRequestParams({ forceAll: true });
+      const response = await api(`/api/v1/transactions?${params.toString()}`);
+      rows = Array.isArray(response) ? response : [];
+    } else {
+      rows = Array.isArray(state.transactions) ? state.transactions : [];
+    }
+    const visibleRows = applyLocalTransactionFilters(rows, { expenseOnly: false });
+    const expenseRows = visibleRows.filter((row) => row.type === "expense");
+    state.transactionFilterSummary = {
+      loading: false,
+      expenseTotal: expenseRows.reduce((sum, row) => sum + Math.abs(Number(row.amount_base || 0)), 0),
+      expenseCount: expenseRows.length
+    };
+  } catch {
+    state.transactionFilterSummary = {
+      loading: false,
+      expenseTotal: 0,
+      expenseCount: 0
+    };
+  }
+  renderTransactionFilterSummary();
+}
+
+function getTransactionListRows() {
+  return isTransactionRecordsOnlyMode() ? state.transactionRecords.rows || [] : state.transactions || [];
+}
+
+function renderTransactionListStatus() {
+  const statusEl = $("#transactionListStatus");
+  const sentinelEl = $("#transactionListSentinel");
+  if (!statusEl || !sentinelEl) return;
+  if (!isTransactionRecordsOnlyMode()) {
+    statusEl.textContent = "";
+    statusEl.classList.add("hidden");
+    sentinelEl.classList.add("hidden");
+    return;
+  }
+  const rows = Array.isArray(state.transactionRecords?.rows) ? state.transactionRecords.rows : [];
+  const filteredRows = applyLocalTransactionFilters(rows, { expenseOnly: false });
+  let text = "";
+  if (state.transactionRecords.loading) {
+    text = t("txListLoadingMore");
+  } else if (!rows.length || !filteredRows.length) {
+    text = "";
+  } else if (state.transactionRecords.hasMore) {
+    text = t("txListLoadMoreHint");
+  } else {
+    text = t("txListAllLoaded");
+  }
+  statusEl.textContent = text;
+  statusEl.classList.toggle("hidden", !text);
+  sentinelEl.classList.toggle("hidden", !state.transactionRecords.hasMore);
+}
+
+async function loadMoreTransactionRecords(options = {}) {
+  if (state.transactionRecords.loading) return state.transactionRecords.rows;
+  const reset = Boolean(options.reset);
+  if (reset) {
+    resetTransactionRecordsState();
+  } else if (!state.transactionRecords.hasMore) {
+    renderTransactionListStatus();
+    return state.transactionRecords.rows;
+  }
+
+  state.transactionRecords.loading = true;
+  renderTransactionListStatus();
+
+  const params = buildTransactionRequestParams({
+    forceAll: true,
+    includePagination: true,
+    limit: state.transactionRecords.pageSize || TRANSACTION_RECORDS_PAGE_SIZE,
+    offset: reset ? 0 : state.transactionRecords.offset || 0
+  });
+
+  try {
+    const rows = await api(`/api/v1/transactions?${params.toString()}`);
+    const nextRows = Array.isArray(rows) ? rows : [];
+    state.transactionRecords.rows = reset
+      ? nextRows
+      : [...state.transactionRecords.rows, ...nextRows.filter((row) => !state.transactionRecords.rows.some((x) => x.id === row.id))];
+    state.transactionRecords.offset = state.transactionRecords.rows.length;
+    state.transactionRecords.hasMore = nextRows.length === (state.transactionRecords.pageSize || TRANSACTION_RECORDS_PAGE_SIZE);
+    renderTransactionList(state.transactionRecords.rows, { expenseOnly: false });
+    renderTransactionListStatus();
+    return state.transactionRecords.rows;
+  } finally {
+    state.transactionRecords.loading = false;
+    renderTransactionListStatus();
+  }
+}
+
+async function loadTransactionsWithOptions(options = {}) {
+  const expenseOnly = typeof options.expenseOnly === "boolean" ? options.expenseOnly : false;
+  const recordsOnly =
+    typeof options.recordsOnly === "boolean" ? options.recordsOnly : isTransactionRecordsOnlyMode();
+  if (recordsOnly) {
+    const rows = await loadMoreTransactionRecords({ reset: options.reset !== false });
+    if (options.refreshSummary !== false && options.reset !== false) {
+      await refreshTransactionFilterSummary({ recordsOnly: true });
+    }
+    return rows;
+  }
+  const params = buildTransactionRequestParams();
   const path = `/api/v1/transactions?${params.toString()}`;
   const rows = await api(path);
   state.transactions = Array.isArray(rows) ? rows : [];
@@ -6260,6 +6459,10 @@ async function loadTransactionsWithOptions(options = {}) {
     renderRecentCompareCard(state.recentCompareRows || []);
   }
   renderTransactionList(state.transactions, { expenseOnly });
+  renderTransactionListStatus();
+  if (options.refreshSummary !== false) {
+    await refreshTransactionFilterSummary({ recordsOnly: false });
+  }
   return state.transactions;
 }
 
@@ -6561,9 +6764,10 @@ function renderTransactionList(rows, options = {}) {
   const visibleRows = applyLocalTransactionFilters(rows, { expenseOnly });
   const target = $("#transactionList");
   const baseCurrency = state.settings?.base_currency || "USD";
+  const recordsOnly = isTransactionRecordsOnlyMode();
   if (!visibleRows.length) {
     target.innerHTML = `<div class="list-row muted">${escapeHtml(
-      t(expenseOnly ? "emptyNoExpenseMonth" : "emptyNoTxMonth")
+      t(expenseOnly ? "emptyNoExpenseMonth" : recordsOnly ? "emptyNoRecentExpense" : "emptyNoTxMonth")
     )}</div>`;
     return;
   }
@@ -7579,6 +7783,8 @@ function applyI18n() {
   renderRecentExpensesCard(state.transactions || []);
   renderTodayExpensesCard(state.transactions || []);
   renderRecentCompareCard(state.recentCompareRows || []);
+  renderTransactionListStatus();
+  renderTransactionFilterSummary();
   renderAgentTokens();
   renderDebugPanel();
 }

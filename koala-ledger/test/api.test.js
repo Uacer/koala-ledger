@@ -234,6 +234,43 @@ test("expense and income fallback to default account when account is omitted", a
   assert.ok(["Default Account", "默认账户"].includes(String(fallbackAccount.name)));
 });
 
+test("transactions support all-history pagination beyond the current month", async () => {
+  const { api } = createHarness();
+  const cash = await createAccount(api, {
+    name: "Wallet",
+    type: "cash",
+    currency: "USD",
+    balance: 500
+  });
+
+  for (const txDate of ["2026-03-12", "2026-02-08", "2026-01-03"]) {
+    const txRes = await api.post("/api/v1/transactions").send({
+      date: txDate,
+      type: "expense",
+      amount_original: 10,
+      currency_original: "USD",
+      category_l1: "Living",
+      category_l2: "Groceries",
+      account_from_id: cash.id,
+      note: txDate
+    });
+    assert.equal(txRes.status, 201);
+  }
+
+  const firstPageRes = await api.get("/api/v1/transactions?all=1&limit=2&offset=0").send();
+  assert.equal(firstPageRes.status, 200);
+  assert.equal(firstPageRes.body.length, 2);
+  assert.deepEqual(
+    firstPageRes.body.map((row) => row.tx_date),
+    ["2026-03-12", "2026-02-08"]
+  );
+
+  const secondPageRes = await api.get("/api/v1/transactions?all=1&limit=2&offset=2").send();
+  assert.equal(secondPageRes.status, 200);
+  assert.equal(secondPageRes.body.length, 1);
+  assert.equal(secondPageRes.body[0].tx_date, "2026-01-03");
+});
+
 test("deleting l2 category keeps historical transactions unchanged", async () => {
   const { api } = createHarness();
   const month = "2026-03";

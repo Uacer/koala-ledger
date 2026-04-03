@@ -1470,9 +1470,15 @@ function createApp(db) {
     const start = normalizeDate(req.query.start);
     const end = normalizeDate(req.query.end);
     const hasRange = Boolean(start || end);
-    const month = hasRange ? null : normalizeMonth(req.query.month);
-    const params = hasRange ? [req.userId] : [req.userId, month];
-    const filters = hasRange ? ["t.user_id = ?"] : ["t.user_id = ?", "substr(t.tx_date, 1, 7) = ?"];
+    const fetchAll = !hasRange && ["1", "true", "yes"].includes(String(req.query.all || "").toLowerCase());
+    const rawLimit = Number.parseInt(String(req.query.limit || ""), 10);
+    const rawOffset = Number.parseInt(String(req.query.offset || ""), 10);
+    const hasLimit = Number.isInteger(rawLimit) && rawLimit > 0;
+    const offset = Number.isInteger(rawOffset) && rawOffset > 0 ? rawOffset : 0;
+    const month = hasRange || fetchAll ? null : normalizeMonth(req.query.month);
+    const params = hasRange || fetchAll ? [req.userId] : [req.userId, month];
+    const filters =
+      hasRange || fetchAll ? ["t.user_id = ?"] : ["t.user_id = ?", "substr(t.tx_date, 1, 7) = ?"];
     if (start) {
       filters.push("t.tx_date >= ?");
       params.push(start);
@@ -1510,7 +1516,11 @@ function createApp(db) {
       WHERE ${filters.join(" AND ")}
       GROUP BY t.id
       ORDER BY t.tx_date DESC, t.id DESC
+      ${hasLimit ? "LIMIT ? OFFSET ?" : ""}
     `;
+    if (hasLimit) {
+      params.push(rawLimit, offset);
+    }
     const rawRows = db.prepare(sql).all(...params);
     const rows = rawRows.map((row) => ({
       ...row,
